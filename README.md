@@ -1,1 +1,1 @@
-
+Interactive Streamlit dashboard for analyzing Ben Franklin Transit (BFT) route performance using Snowflake. Includes monthly and seasonal route profiles, revenue hours, revenue miles, and interactive visualizations.
