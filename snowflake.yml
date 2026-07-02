@@ -1,1 +1,19 @@
+definition_version: 2
+entities:
+  streamlit_app:
+    type: streamlit
+    identifier:
+      database: TRANSIT_PLANNING
+      schema: PUBLIC
+      name: ROUTE_PROFILE_DASHBOARD_2026
+    title: Route_Profile_Dashboard_2026
+    query_warehouse: SEPIDEH_WH
+    compute_pool: SYSTEM_COMPUTE_POOL_CPU
+    run_mode: SpcsOnly
+    execute_as: OWNER
+    main_file: streamlit_app.py
+    artifacts:
+      - pyproject.toml
+      - streamlit_app.py
+      - .streamlit/config.toml
 
