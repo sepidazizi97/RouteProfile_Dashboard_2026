@@ -3,32 +3,58 @@ import pandas as pd
 import altair as alt
 import snowflake.connector
 
+# ==================================================
+# 1. PAGE SETUP
+# ==================================================
+
 st.set_page_config(
     page_title="BFT Route Performance Dashboard",
     layout="wide"
 )
 
-st.markdown("""
-<style>
-.main-title {
-    font-size: 38px;
-    font-weight: 800;
-    color: #12355B;
-}
-.sub-title {
-    color: #6B7280;
-    font-size: 16px;
-    margin-bottom: 24px;
-}
-.section-header {
-    font-size: 24px;
-    font-weight: 750;
-    color: #12355B;
-    margin-top: 28px;
-    margin-bottom: 10px;
-}
-</style>
-""", unsafe_allow_html=True)
+# ==================================================
+# 2. GLOBAL COLORS
+# ==================================================
+
+BFT_NAVY = "#12355B"
+ON_TIME_GREEN = "#2E8B57"
+EARLY_GOLD = "#E3A008"
+LATE_RED = "#D64545"
+DIRECTION_BLUE = "#2563EB"
+DIRECTION_GOLD = "#F2B705"
+
+# ==================================================
+# 3. STYLING
+# ==================================================
+
+st.markdown(
+    f"""
+    <style>
+    .main-title {{
+        font-size: 38px;
+        font-weight: 800;
+        color: {BFT_NAVY};
+    }}
+    .sub-title {{
+        color: #6B7280;
+        font-size: 16px;
+        margin-bottom: 24px;
+    }}
+    .section-header {{
+        font-size: 24px;
+        font-weight: 750;
+        color: {BFT_NAVY};
+        margin-top: 28px;
+        margin-bottom: 10px;
+    }}
+    .small-note {{
+        color: #6B7280;
+        font-size: 14px;
+    }}
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
 st.markdown(
     '<div class="main-title">BFT Route Performance Dashboard</div>',
@@ -39,6 +65,10 @@ st.markdown(
     '<div class="sub-title">Monthly route profile, seasonal route profile, revenue hours, and revenue miles</div>',
     unsafe_allow_html=True
 )
+
+# ==================================================
+# 4. LOAD DATA FROM SNOWFLAKE
+# ==================================================
 
 @st.cache_data
 def load_data():
@@ -64,15 +94,25 @@ def load_data():
 
     return monthly, seasonal, revenue
 
+
 monthly_df, seasonal_df, revenue_df = load_data()
+
+# ==================================================
+# 5. CLEAN DATA
+# ==================================================
 
 def clean_route_profile(df):
     df = df.copy()
 
-    df["trip_start_time"] = df["trip_start_time"].astype(str)
-    df["route_short_name"] = df["route_short_name"].astype(str)
-    df["direction"] = df["direction"].astype(str)
-    df["service_day"] = df["service_day"].astype(str)
+    text_cols = [
+        "trip_start_time",
+        "route_short_name",
+        "direction",
+        "service_day"
+    ]
+
+    for col in text_cols:
+        df[col] = df[col].astype(str)
 
     numeric_cols = [
         "total_fare_counts",
@@ -87,6 +127,7 @@ def clean_route_profile(df):
 
     return df
 
+
 monthly_df = clean_route_profile(monthly_df)
 seasonal_df = clean_route_profile(seasonal_df)
 
@@ -95,6 +136,10 @@ revenue_df["direction"] = revenue_df["direction"].astype(str)
 
 for col in ["revenue_hours", "revenue_miles", "trip_count"]:
     revenue_df[col] = pd.to_numeric(revenue_df[col], errors="coerce")
+
+# ==================================================
+# 6. REUSABLE CHART FUNCTION FOR MONTHLY/SEASONAL
+# ==================================================
 
 def route_profile_charts(df, title_label):
     service_day_order = ["Weekday", "Saturday", "Sunday"]
@@ -118,7 +163,7 @@ def route_profile_charts(df, title_label):
     st.divider()
 
     available_days = df["service_day"].dropna().unique().tolist()
-    ordered_days = [d for d in service_day_order if d in available_days]
+    ordered_days = [day for day in service_day_order if day in available_days]
 
     if not ordered_days:
         st.warning("No service day data available for this selection.")
@@ -135,6 +180,10 @@ def route_profile_charts(df, title_label):
                 f'<div class="section-header">{service_day} Service</div>',
                 unsafe_allow_html=True
             )
+
+            # -----------------------------
+            # Boardings chart
+            # -----------------------------
 
             st.markdown("#### Boardings per Trip by Direction")
 
@@ -164,6 +213,10 @@ def route_profile_charts(df, title_label):
 
             st.altair_chart(boardings_chart, use_container_width=True)
 
+            # -----------------------------
+            # Median passenger load chart
+            # -----------------------------
+
             st.markdown("#### Median Passenger Load by Trip and Direction")
 
             load_data = (
@@ -184,7 +237,11 @@ def route_profile_charts(df, title_label):
                     tooltip=[
                         alt.Tooltip("trip_start_time:N", title="Trip Start Time"),
                         alt.Tooltip("direction:N", title="Direction"),
-                        alt.Tooltip("avg_median_passenger_load:Q", title="Median Passenger Load", format=".1f")
+                        alt.Tooltip(
+                            "avg_median_passenger_load:Q",
+                            title="Median Passenger Load",
+                            format=".1f"
+                        )
                     ]
                 )
                 .properties(height=360)
@@ -192,11 +249,19 @@ def route_profile_charts(df, title_label):
 
             st.altair_chart(load_chart, use_container_width=True)
 
+            # -----------------------------
+            # On-time performance chart
+            # -----------------------------
+
             st.markdown("#### On-Time Performance by Trip")
 
             otp_long = service_df.melt(
                 id_vars=["trip_start_time", "direction"],
-                value_vars=["percent_on_time", "percent_early", "percent_late"],
+                value_vars=[
+                    "percent_on_time",
+                    "percent_early",
+                    "percent_late"
+                ],
                 var_name="performance_type",
                 value_name="percent"
             )
@@ -211,18 +276,47 @@ def route_profile_charts(df, title_label):
                 alt.Chart(otp_long)
                 .mark_bar()
                 .encode(
-                    x=alt.X("trip_start_time:N", title="Trip Start Time", sort=None),
-                    y=alt.Y("percent:Q", title="Percent", stack="normalize"),
-                    color=alt.Color("performance_type:N", title="Performance Type"),
-                    row=alt.Row("direction:N", title="Direction"),
+                    x=alt.X(
+                        "trip_start_time:N",
+                        title="Trip Start Time",
+                        sort=None,
+                        axis=alt.Axis(labelAngle=-90)
+                    ),
+                    y=alt.Y(
+                        "percent:Q",
+                        title="Percent",
+                        stack="normalize",
+                        axis=alt.Axis(format="%")
+                    ),
+                    color=alt.Color(
+                        "performance_type:N",
+                        title="Performance",
+                        scale=alt.Scale(
+                            domain=["On-Time", "Early", "Late"],
+                            range=[
+                                ON_TIME_GREEN,
+                                EARLY_GOLD,
+                                LATE_RED
+                            ]
+                        ),
+                        legend=alt.Legend(
+                            orient="top",
+                            direction="horizontal",
+                            title=None
+                        )
+                    ),
+                    row=alt.Row(
+                        "direction:N",
+                        title="Direction"
+                    ),
                     tooltip=[
                         alt.Tooltip("trip_start_time:N", title="Trip Start Time"),
                         alt.Tooltip("direction:N", title="Direction"),
-                        alt.Tooltip("performance_type:N", title="Performance Type"),
+                        alt.Tooltip("performance_type:N", title="Performance"),
                         alt.Tooltip("percent:Q", title="Percent", format=".1f")
                     ]
                 )
-                .properties(height=220)
+                .properties(height=230)
             )
 
             st.altair_chart(otp_chart, use_container_width=True)
@@ -231,11 +325,19 @@ def route_profile_charts(df, title_label):
                 st.dataframe(service_df, use_container_width=True)
 
 
+# ==================================================
+# 7. DASHBOARD TABS
+# ==================================================
+
 tab1, tab2, tab3 = st.tabs([
     "📊 Monthly Route Profile",
     "🌤 Seasonal Route Profile",
     "🚍 Revenue Hours & Miles"
 ])
+
+# ==================================================
+# 8. TAB 1 — MONTHLY ROUTE PROFILE
+# ==================================================
 
 with tab1:
     st.markdown("### Monthly Filters")
@@ -252,10 +354,18 @@ with tab1:
     c1, c2 = st.columns(2)
 
     with c1:
-        selected_month = st.selectbox("Month", month_options, key="monthly_month")
+        selected_month = st.selectbox(
+            "Month",
+            month_options,
+            key="monthly_month"
+        )
 
     with c2:
-        selected_route_monthly = st.selectbox("Route", route_options, key="monthly_route")
+        selected_route_monthly = st.selectbox(
+            "Route",
+            route_options,
+            key="monthly_route"
+        )
 
     monthly_filtered = monthly_df[
         (monthly_df["month"] == selected_month) &
@@ -266,6 +376,10 @@ with tab1:
         monthly_filtered,
         f"Monthly Route Profile | Route {selected_route_monthly} | {selected_month} 2026"
     )
+
+# ==================================================
+# 9. TAB 2 — SEASONAL ROUTE PROFILE
+# ==================================================
 
 with tab2:
     st.markdown("### Seasonal Filters")
@@ -278,10 +392,18 @@ with tab2:
     c1, c2 = st.columns(2)
 
     with c1:
-        selected_season = st.selectbox("Season", season_options, key="seasonal_season")
+        selected_season = st.selectbox(
+            "Season",
+            season_options,
+            key="seasonal_season"
+        )
 
     with c2:
-        selected_route_seasonal = st.selectbox("Route", seasonal_route_options, key="seasonal_route")
+        selected_route_seasonal = st.selectbox(
+            "Route",
+            seasonal_route_options,
+            key="seasonal_route"
+        )
 
     seasonal_filtered = seasonal_df[
         (seasonal_df[season_col] == selected_season) &
@@ -293,9 +415,17 @@ with tab2:
         f"Seasonal Route Profile | Route {selected_route_seasonal} | {selected_season}"
     )
 
+# ==================================================
+# 10. TAB 3 — REVENUE HOURS & REVENUE MILES
+# ==================================================
+
 with tab3:
     st.markdown("### 🚍 Revenue Hours & Revenue Miles")
     st.caption("Compare revenue hours, revenue miles, and trips by route and direction for a selected month.")
+
+    # -----------------------------
+    # Revenue month filter
+    # -----------------------------
 
     rev_month_order = (
         revenue_df[["month", "month_number"]]
@@ -314,6 +444,10 @@ with tab3:
     rev_filtered = revenue_df[
         revenue_df["month"] == selected_rev_month
     ].copy()
+
+    # -----------------------------
+    # Route and direction summary
+    # -----------------------------
 
     route_summary = (
         rev_filtered
@@ -341,6 +475,10 @@ with tab3:
         ["route_short_name", "direction_order", "direction"]
     )
 
+    # -----------------------------
+    # KPI cards
+    # -----------------------------
+
     total_hours = route_summary["revenue_hours"].sum()
     total_miles = route_summary["revenue_miles"].sum()
     total_trips = route_summary["trip_count"].sum()
@@ -354,6 +492,10 @@ with tab3:
     r4.metric("Routes", f"{total_routes:,.0f}")
 
     st.divider()
+
+    # -----------------------------
+    # Reusable revenue chart
+    # -----------------------------
 
     def paired_route_chart(data, y_col, y_title, chart_title, tooltip_format):
         return (
@@ -391,7 +533,10 @@ with tab3:
                     title=None,
                     scale=alt.Scale(
                         domain=["First Direction", "Second Direction"],
-                        range=["#2563EB", "#F2B705"]
+                        range=[
+                            DIRECTION_BLUE,
+                            DIRECTION_GOLD
+                        ]
                     ),
                     legend=None
                 ),
@@ -407,7 +552,12 @@ with tab3:
             )
         )
 
+    # -----------------------------
+    # Revenue miles chart
+    # -----------------------------
+
     st.markdown("#### Revenue Miles by Route and Direction")
+
     st.altair_chart(
         paired_route_chart(
             route_summary,
@@ -419,7 +569,12 @@ with tab3:
         use_container_width=True
     )
 
+    # -----------------------------
+    # Revenue hours chart
+    # -----------------------------
+
     st.markdown("#### Revenue Hours by Route and Direction")
+
     st.altair_chart(
         paired_route_chart(
             route_summary,
@@ -431,7 +586,12 @@ with tab3:
         use_container_width=True
     )
 
+    # -----------------------------
+    # Trips chart
+    # -----------------------------
+
     st.markdown("#### Trips by Route and Direction")
+
     st.altair_chart(
         paired_route_chart(
             route_summary,
@@ -442,6 +602,10 @@ with tab3:
         ),
         use_container_width=True
     )
+
+    # -----------------------------
+    # Detail table
+    # -----------------------------
 
     with st.expander("View revenue route and direction summary table"):
         st.dataframe(
