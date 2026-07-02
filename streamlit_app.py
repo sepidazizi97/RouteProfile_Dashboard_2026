@@ -1,20 +1,12 @@
 import streamlit as st
 import pandas as pd
 import altair as alt
-from snowflake.snowpark.context import get_active_session
-
-# --------------------------------------------------
-# Page setup
-# --------------------------------------------------
+import snowflake.connector
 
 st.set_page_config(
     page_title="BFT Route Performance Dashboard",
     layout="wide"
 )
-
-# --------------------------------------------------
-# Styling
-# --------------------------------------------------
 
 st.markdown("""
 <style>
@@ -35,15 +27,11 @@ st.markdown("""
     margin-top: 28px;
     margin-bottom: 10px;
 }
-.small-note {
-    color: #6B7280;
-    font-size: 14px;
-}
 </style>
 """, unsafe_allow_html=True)
 
 st.markdown(
-    '<div class="main-title"> BFT Route Performance Dashboard</div>',
+    '<div class="main-title">BFT Route Performance Dashboard</div>',
     unsafe_allow_html=True
 )
 
@@ -52,17 +40,23 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# --------------------------------------------------
-# Load Snowflake data
-# --------------------------------------------------
-
-session = get_active_session()
-
 @st.cache_data
 def load_data():
-    monthly = session.sql("SELECT * FROM V_ROUTE_PROFILE_MONTHLY").to_pandas()
-    seasonal = session.sql("SELECT * FROM V_ROUTE_PROFILE_SEASONAL").to_pandas()
-    revenue = session.sql("SELECT * FROM V_REV_HOUR_MILE").to_pandas()
+    conn = snowflake.connector.connect(
+        account=st.secrets["snowflake"]["account"],
+        user=st.secrets["snowflake"]["user"],
+        password=st.secrets["snowflake"]["password"],
+        warehouse=st.secrets["snowflake"]["warehouse"],
+        database=st.secrets["snowflake"]["database"],
+        schema=st.secrets["snowflake"]["schema"],
+        role=st.secrets["snowflake"]["role"],
+    )
+
+    monthly = pd.read_sql("SELECT * FROM V_ROUTE_PROFILE_MONTHLY", conn)
+    seasonal = pd.read_sql("SELECT * FROM V_ROUTE_PROFILE_SEASONAL", conn)
+    revenue = pd.read_sql("SELECT * FROM V_REV_HOUR_MILE", conn)
+
+    conn.close()
 
     monthly.columns = monthly.columns.str.lower()
     seasonal.columns = seasonal.columns.str.lower()
@@ -71,10 +65,6 @@ def load_data():
     return monthly, seasonal, revenue
 
 monthly_df, seasonal_df, revenue_df = load_data()
-
-# --------------------------------------------------
-# Clean data
-# --------------------------------------------------
 
 def clean_route_profile(df):
     df = df.copy()
@@ -105,10 +95,6 @@ revenue_df["direction"] = revenue_df["direction"].astype(str)
 
 for col in ["revenue_hours", "revenue_miles", "trip_count"]:
     revenue_df[col] = pd.to_numeric(revenue_df[col], errors="coerce")
-
-# --------------------------------------------------
-# Helper function for Monthly and Seasonal tabs
-# --------------------------------------------------
 
 def route_profile_charts(df, title_label):
     service_day_order = ["Weekday", "Saturday", "Sunday"]
@@ -150,7 +136,6 @@ def route_profile_charts(df, title_label):
                 unsafe_allow_html=True
             )
 
-            # Boardings chart
             st.markdown("#### Boardings per Trip by Direction")
 
             boardings_data = (
@@ -179,7 +164,6 @@ def route_profile_charts(df, title_label):
 
             st.altair_chart(boardings_chart, use_container_width=True)
 
-            # Median passenger load chart
             st.markdown("#### Median Passenger Load by Trip and Direction")
 
             load_data = (
@@ -208,8 +192,6 @@ def route_profile_charts(df, title_label):
 
             st.altair_chart(load_chart, use_container_width=True)
 
-
-                        # On-time performance chart
             st.markdown("#### On-Time Performance by Trip")
 
             otp_long = service_df.melt(
@@ -249,20 +231,11 @@ def route_profile_charts(df, title_label):
                 st.dataframe(service_df, use_container_width=True)
 
 
-# --------------------------------------------------
-# Dashboard tabs
-# --------------------------------------------------
-
 tab1, tab2, tab3 = st.tabs([
     "📊 Monthly Route Profile",
     "🌤 Seasonal Route Profile",
     "🚍 Revenue Hours & Miles"
 ])
-
-
-# --------------------------------------------------
-# Tab 1: Monthly Route Profile
-# --------------------------------------------------
 
 with tab1:
     st.markdown("### Monthly Filters")
@@ -279,18 +252,10 @@ with tab1:
     c1, c2 = st.columns(2)
 
     with c1:
-        selected_month = st.selectbox(
-            "Month",
-            month_options,
-            key="monthly_month"
-        )
+        selected_month = st.selectbox("Month", month_options, key="monthly_month")
 
     with c2:
-        selected_route_monthly = st.selectbox(
-            "Route",
-            route_options,
-            key="monthly_route"
-        )
+        selected_route_monthly = st.selectbox("Route", route_options, key="monthly_route")
 
     monthly_filtered = monthly_df[
         (monthly_df["month"] == selected_month) &
@@ -301,11 +266,6 @@ with tab1:
         monthly_filtered,
         f"Monthly Route Profile | Route {selected_route_monthly} | {selected_month} 2026"
     )
-
-
-# --------------------------------------------------
-# Tab 2: Seasonal Route Profile
-# --------------------------------------------------
 
 with tab2:
     st.markdown("### Seasonal Filters")
@@ -318,18 +278,10 @@ with tab2:
     c1, c2 = st.columns(2)
 
     with c1:
-        selected_season = st.selectbox(
-            "Season",
-            season_options,
-            key="seasonal_season"
-        )
+        selected_season = st.selectbox("Season", season_options, key="seasonal_season")
 
     with c2:
-        selected_route_seasonal = st.selectbox(
-            "Route",
-            seasonal_route_options,
-            key="seasonal_route"
-        )
+        selected_route_seasonal = st.selectbox("Route", seasonal_route_options, key="seasonal_route")
 
     seasonal_filtered = seasonal_df[
         (seasonal_df[season_col] == selected_season) &
@@ -340,10 +292,6 @@ with tab2:
         seasonal_filtered,
         f"Seasonal Route Profile | Route {selected_route_seasonal} | {selected_season}"
     )
-
-# --------------------------------------------------
-# Tab 3: Revenue Hours & Revenue Miles
-# --------------------------------------------------
 
 with tab3:
     st.markdown("### 🚍 Revenue Hours & Revenue Miles")
@@ -510,5 +458,3 @@ with tab3:
         )
 
     st.caption("Blue and gold represent the two directions. Hover over each bar to see the exact direction.")
-
-  
