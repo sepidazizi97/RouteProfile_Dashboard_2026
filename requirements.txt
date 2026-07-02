@@ -1,1 +1,5 @@
-
+streamlit
+pandas
+altair
+snowflake-snowpark-python
+snowflake-connector-python
