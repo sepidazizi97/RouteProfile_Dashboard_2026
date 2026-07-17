@@ -66,14 +66,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.markdown(
-    """
-    <div class="sub-title">
-        Public-facing route performance dashboard using CSV files stored in this repository.
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
 
 
 # ============================================================
