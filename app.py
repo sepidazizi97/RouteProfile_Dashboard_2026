@@ -715,13 +715,11 @@ def combined_direction_bar_chart(
     height: int = 360,
 ):
     """
-    Create an evenly spaced grouped chart for both directions.
+    Create an evenly spaced grouped bar chart for both directions.
 
-    Time is used only to sort and align trips chronologically. The first
-    trip in each direction is paired, followed by the second trip in each
-    direction, and so on. Because the x-axis is categorical, every paired
-    trip position receives equal horizontal spacing even when scheduled
-    headways are uneven.
+    Trip start time remains the descriptive x-axis variable, but it is
+    treated as an ordered category. This gives every time position the
+    same horizontal spacing while preserving chronological order.
     """
 
     chart_data = data.dropna(
@@ -736,12 +734,6 @@ def combined_direction_bar_chart(
     if chart_data.empty:
         return None
 
-    group_columns = [
-        "trip_start_time",
-        "trip_datetime",
-        "direction",
-    ]
-
     aggregation_method = {
         "mean": "mean",
         "max": "max",
@@ -754,7 +746,11 @@ def combined_direction_bar_chart(
     combined_data = (
         chart_data
         .groupby(
-            group_columns,
+            [
+                "trip_start_time",
+                "trip_datetime",
+                "direction",
+            ],
             as_index=False,
             dropna=False,
         )
@@ -817,104 +813,39 @@ def combined_direction_bar_chart(
         for direction in direction_order
     ]
 
-    # Sort each direction by its true scheduled start time, then assign
-    # an equal-spaced sequence position. Sequence 1 from each direction
-    # appears together, sequence 2 appears together, and so forth.
-    combined_data["direction_sort"] = (
-        combined_data["direction"]
-        .map(
-            {
-                direction: index
-                for index, direction in enumerate(direction_order)
-            }
-        )
-        .fillna(len(direction_order))
-    )
-
-    combined_data = combined_data.sort_values(
-        [
-            "direction_sort",
-            "trip_datetime",
-            "trip_start_time",
-            "trip_codes",
-        ]
-    )
-
-    combined_data["trip_sequence"] = (
-        combined_data
-        .groupby("direction", dropna=False)
-        .cumcount()
-        + 1
-    )
-
-    # Build one axis label per sequence position using the actual times
-    # represented at that position. Examples: "06:00" or "06:00 / 06:12".
-    slot_labels = (
-        combined_data
-        .groupby(
-            "trip_sequence",
-            as_index=False,
-        )
-        .agg(
-            slot_sort_time=(
-                "trip_datetime",
-                "mean",
-            ),
-            paired_times=(
+    # Sort the descriptive time labels chronologically.
+    time_order = (
+        combined_data[
+            [
                 "trip_start_time",
-                lambda values: " / ".join(
-                    sorted(
-                        values.dropna()
-                        .astype(str)
-                        .unique(),
-                        key=lambda value: pd.to_datetime(
-                            value,
-                            format="%H:%M",
-                            errors="coerce",
-                        ),
-                    )
-                ),
-            ),
-        )
+                "trip_datetime",
+            ]
+        ]
+        .drop_duplicates()
         .sort_values(
             [
-                "slot_sort_time",
-                "trip_sequence",
+                "trip_datetime",
+                "trip_start_time",
             ]
         )
-    )
-
-    slot_labels["time_slot"] = (
-        slot_labels["paired_times"]
-        .where(
-            slot_labels["paired_times"].ne(""),
-            "Trip "
-            + slot_labels["trip_sequence"].astype(str),
-        )
-    )
-
-    combined_data = combined_data.merge(
-        slot_labels[
-            [
-                "trip_sequence",
-                "time_slot",
-                "slot_sort_time",
-            ]
-        ],
-        on="trip_sequence",
-        how="left",
-    )
-
-    slot_order = (
-        slot_labels
-        .sort_values(
-            [
-                "slot_sort_time",
-                "trip_sequence",
-            ]
-        )["time_slot"]
+        ["trip_start_time"]
         .tolist()
     )
+
+    # Display fewer labels when there are many trips while retaining
+    # every bar and equal spacing between all categorical time positions.
+    number_of_times = len(time_order)
+
+    if number_of_times <= 16:
+        label_step = 1
+    elif number_of_times <= 32:
+        label_step = 2
+    elif number_of_times <= 48:
+        label_step = 3
+    else:
+        label_step = 4
+
+    visible_time_labels = time_order[::label_step]
 
     return (
         alt.Chart(combined_data)
@@ -924,13 +855,14 @@ def combined_direction_bar_chart(
         )
         .encode(
             x=alt.X(
-                "time_slot:N",
-                title="Chronologically Paired Trip Times",
-                sort=slot_order,
+                "trip_start_time:N",
+                title="Trip Start Time",
+                sort=time_order,
                 axis=alt.Axis(
                     labelAngle=-45,
                     labelOverlap=False,
-                    labelLimit=115,
+                    labelLimit=90,
+                    values=visible_time_labels,
                 ),
                 scale=alt.Scale(
                     paddingInner=0.20,
@@ -964,13 +896,8 @@ def combined_direction_bar_chart(
             ),
             tooltip=[
                 alt.Tooltip(
-                    "trip_sequence:Q",
-                    title="Paired Trip Position",
-                    format=".0f",
-                ),
-                alt.Tooltip(
                     "trip_start_time:N",
-                    title="Actual Trip Start Time",
+                    title="Trip Start Time",
                 ),
                 alt.Tooltip(
                     "trip_codes:N",
@@ -1368,37 +1295,38 @@ def display_route_profile(
 
             st.markdown("### Boardings")
 
-            st.markdown(
-                "#### Both Directions — "
-                "Average Daily Boardings per Trip"
-            )
-
-            combined_boarding_chart = (
-                combined_direction_bar_chart(
-                    data=service_df,
-                    value_column="average_daily_boardings",
-                    y_title="Average Daily Boardings",
-                    tooltip_title="Average Daily Boardings",
-                    aggregation="sum",
-                    height=380,
-                )
-            )
-
-            if combined_boarding_chart is not None:
-                st.altair_chart(
-                    combined_boarding_chart,
-                    use_container_width=True,
-                )
-            else:
-                st.warning(
-                    "No boarding information is available "
-                    "for the combined-direction chart."
+            if route_name not in {"25", "41"}:
+                st.markdown(
+                    "#### Both Directions — "
+                    "Average Daily Boardings per Trip"
                 )
 
-            st.caption(
-                "Trips with the same scheduled start time "
-                "are displayed next to each other by direction."
-            )
+                combined_boarding_chart = (
+                    combined_direction_bar_chart(
+                        data=service_df,
+                        value_column="average_daily_boardings",
+                        y_title="Average Daily Boardings",
+                        tooltip_title="Average Daily Boardings",
+                        aggregation="sum",
+                        height=380,
+                    )
+                )
+
+                if combined_boarding_chart is not None:
+                    st.altair_chart(
+                        combined_boarding_chart,
+                        use_container_width=True,
+                    )
+                else:
+                    st.warning(
+                        "No boarding information is available "
+                        "for the combined-direction chart."
+                    )
+
+                st.caption(
+                    "Trip start time is used as an ordered descriptive "
+                    "category, so every bar position has equal spacing."
+                )
 
             st.markdown(
                 "#### Individual Direction Charts"
@@ -1510,37 +1438,38 @@ def display_route_profile(
                 "### Median Passenger Load"
             )
 
-            st.markdown(
-                "#### Both Directions — "
-                "Median Passenger Load per Trip"
-            )
-
-            combined_load_chart = (
-                combined_direction_bar_chart(
-                    data=service_df,
-                    value_column="median_passenger_load",
-                    y_title="Median Passenger Load",
-                    tooltip_title="Median Passenger Load",
-                    aggregation="mean",
-                    height=380,
-                )
-            )
-
-            if combined_load_chart is not None:
-                st.altair_chart(
-                    combined_load_chart,
-                    use_container_width=True,
-                )
-            else:
-                st.warning(
-                    "No median passenger-load information "
-                    "is available for the combined-direction chart."
+            if route_name not in {"25", "41"}:
+                st.markdown(
+                    "#### Both Directions — "
+                    "Median Passenger Load per Trip"
                 )
 
-            st.caption(
-                "Trips with the same scheduled start time "
-                "are displayed next to each other by direction."
-            )
+                combined_load_chart = (
+                    combined_direction_bar_chart(
+                        data=service_df,
+                        value_column="median_passenger_load",
+                        y_title="Median Passenger Load",
+                        tooltip_title="Median Passenger Load",
+                        aggregation="mean",
+                        height=380,
+                    )
+                )
+
+                if combined_load_chart is not None:
+                    st.altair_chart(
+                        combined_load_chart,
+                        use_container_width=True,
+                    )
+                else:
+                    st.warning(
+                        "No median passenger-load information "
+                        "is available for the combined-direction chart."
+                    )
+
+                st.caption(
+                    "Trip start time is used as an ordered descriptive "
+                    "category, so every bar position has equal spacing."
+                )
 
             st.markdown(
                 "#### Individual Direction Charts"
