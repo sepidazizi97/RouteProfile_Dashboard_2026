@@ -706,6 +706,38 @@ def temporal_bar_chart(
     )
 
 
+def choose_time_tick_interval(chart_data: pd.DataFrame) -> int:
+    """Choose a readable time-axis label interval in minutes."""
+
+    valid_times = chart_data["trip_datetime"].dropna().sort_values()
+
+    if valid_times.empty:
+        return 30
+
+    time_span_minutes = max(
+        1,
+        int(
+            (
+                valid_times.max()
+                - valid_times.min()
+            ).total_seconds()
+            / 60
+        ),
+    )
+
+    # Aim for roughly 10–16 visible labels across the chart.
+    candidates = [15, 20, 30, 45]
+    target_labels = 13
+
+    return min(
+        candidates,
+        key=lambda minutes: abs(
+            (time_span_minutes / minutes)
+            - target_labels
+        ),
+    )
+
+
 def combined_direction_bar_chart(
     data: pd.DataFrame,
     value_column: str,
@@ -715,18 +747,16 @@ def combined_direction_bar_chart(
     height: int = 360,
 ):
     """
-    Create an evenly spaced grouped chart for both directions.
+    Create a both-directions chart using actual numerical trip time.
 
-    Time is used only to sort and align trips chronologically. The first
-    trip in each direction is paired, followed by the second trip in each
-    direction, and so on. Because the x-axis is categorical, every paired
-    trip position receives equal horizontal spacing even when scheduled
-    headways are uneven.
+    Bars are positioned according to their real scheduled start times, so
+    longer headways create wider gaps and shorter headways create narrower
+    gaps. Axis labels are shown only at a selected 15-, 20-, 30-, or 45-minute
+    interval to keep the chart readable.
     """
 
     chart_data = data.dropna(
         subset=[
-            "trip_start_time",
             "trip_datetime",
             "direction",
             value_column,
@@ -735,12 +765,6 @@ def combined_direction_bar_chart(
 
     if chart_data.empty:
         return None
-
-    group_columns = [
-        "trip_start_time",
-        "trip_datetime",
-        "direction",
-    ]
 
     aggregation_method = {
         "mean": "mean",
@@ -754,7 +778,11 @@ def combined_direction_bar_chart(
     combined_data = (
         chart_data
         .groupby(
-            group_columns,
+            [
+                "trip_datetime",
+                "trip_start_time",
+                "direction",
+            ],
             as_index=False,
             dropna=False,
         )
@@ -773,6 +801,13 @@ def combined_direction_bar_chart(
                     )
                 ),
             ),
+        )
+        .sort_values(
+            [
+                "trip_datetime",
+                "direction",
+                "trip_codes",
+            ]
         )
     )
 
@@ -817,130 +852,42 @@ def combined_direction_bar_chart(
         for direction in direction_order
     ]
 
-    # Sort each direction by its true scheduled start time, then assign
-    # an equal-spaced sequence position. Sequence 1 from each direction
-    # appears together, sequence 2 appears together, and so forth.
-    combined_data["direction_sort"] = (
-        combined_data["direction"]
-        .map(
-            {
-                direction: index
-                for index, direction in enumerate(direction_order)
-            }
-        )
-        .fillna(len(direction_order))
-    )
-
-    combined_data = combined_data.sort_values(
-        [
-            "direction_sort",
-            "trip_datetime",
-            "trip_start_time",
-            "trip_codes",
-        ]
-    )
-
-    combined_data["trip_sequence"] = (
+    tick_interval_minutes = choose_time_tick_interval(
         combined_data
-        .groupby("direction", dropna=False)
-        .cumcount()
-        + 1
     )
 
-    # Build one axis label per sequence position using the actual times
-    # represented at that position. Examples: "06:00" or "06:00 / 06:12".
-    slot_labels = (
-        combined_data
-        .groupby(
-            "trip_sequence",
-            as_index=False,
-        )
-        .agg(
-            slot_sort_time=(
-                "trip_datetime",
-                "mean",
-            ),
-            paired_times=(
-                "trip_start_time",
-                lambda values: " / ".join(
-                    sorted(
-                        values.dropna()
-                        .astype(str)
-                        .unique(),
-                        key=lambda value: pd.to_datetime(
-                            value,
-                            format="%H:%M",
-                            errors="coerce",
-                        ),
-                    )
-                ),
-            ),
-        )
-        .sort_values(
-            [
-                "slot_sort_time",
-                "trip_sequence",
-            ]
-        )
-    )
+    axis_tick_count = {
+        "interval": "minute",
+        "step": tick_interval_minutes,
+    }
 
-    slot_labels["time_slot"] = (
-        slot_labels["paired_times"]
-        .where(
-            slot_labels["paired_times"].ne(""),
-            "Trip "
-            + slot_labels["trip_sequence"].astype(str),
-        )
-    )
-
-    combined_data = combined_data.merge(
-        slot_labels[
-            [
-                "trip_sequence",
-                "time_slot",
-                "slot_sort_time",
-            ]
-        ],
-        on="trip_sequence",
-        how="left",
-    )
-
-    slot_order = (
-        slot_labels
-        .sort_values(
-            [
-                "slot_sort_time",
-                "trip_sequence",
-            ]
-        )["time_slot"]
-        .tolist()
-    )
+    # A narrow temporal bar width keeps nearby direction trips distinct while
+    # preserving their true time positions on the continuous x-axis.
+    bar_size = 8 if len(combined_data) >= 30 else 11
 
     return (
         alt.Chart(combined_data)
         .mark_bar(
+            size=bar_size,
             cornerRadiusTopLeft=2,
             cornerRadiusTopRight=2,
+            opacity=0.90,
         )
         .encode(
             x=alt.X(
-                "time_slot:N",
-                title="Chronologically Paired Trip Times",
-                sort=slot_order,
+                "trip_datetime:T",
+                title="Actual Trip Start Time",
                 axis=alt.Axis(
+                    format="%H:%M",
                     labelAngle=-45,
                     labelOverlap=False,
-                    labelLimit=115,
+                    tickCount=axis_tick_count,
+                    grid=True,
                 ),
                 scale=alt.Scale(
-                    paddingInner=0.20,
-                    paddingOuter=0.08,
+                    nice=False,
+                    padding=10,
                 ),
-            ),
-            xOffset=alt.XOffset(
-                "direction:N",
-                title="Direction",
-                sort=direction_order,
             ),
             y=alt.Y(
                 "value:Q",
@@ -962,12 +909,11 @@ def combined_direction_bar_chart(
                     direction="horizontal",
                 ),
             ),
+            xOffset=alt.XOffset(
+                "direction:N",
+                sort=direction_order,
+            ),
             tooltip=[
-                alt.Tooltip(
-                    "trip_sequence:Q",
-                    title="Paired Trip Position",
-                    format=".0f",
-                ),
                 alt.Tooltip(
                     "trip_start_time:N",
                     title="Actual Trip Start Time",
@@ -1396,8 +1342,9 @@ def display_route_profile(
                 )
 
             st.caption(
-                "Trips with the same scheduled start time "
-                "are displayed next to each other by direction."
+                "Trips are positioned by their actual scheduled start time. "
+                "The time-axis labels are automatically shown every 15, 20, "
+                "30, or 45 minutes, depending on the service span."
             )
 
             st.markdown(
@@ -1538,8 +1485,9 @@ def display_route_profile(
                 )
 
             st.caption(
-                "Trips with the same scheduled start time "
-                "are displayed next to each other by direction."
+                "Trips are positioned by their actual scheduled start time. "
+                "The time-axis labels are automatically shown every 15, 20, "
+                "30, or 45 minutes, depending on the service span."
             )
 
             st.markdown(
