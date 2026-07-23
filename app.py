@@ -886,7 +886,7 @@ def combined_direction_bar_chart(
             direction_order[0]: 0.0
         }
     else:
-        offset_spacing = 4.0
+        offset_spacing = 6.0
         centre = (direction_count - 1) / 2
         direction_offsets = {
             direction: (index - centre) * offset_spacing
@@ -944,6 +944,7 @@ def combined_direction_bar_chart(
             y=alt.Y(
                 "value:Q",
                 title=y_title,
+                stack=None,
                 scale=alt.Scale(
                     zero=True,
                     nice=True,
