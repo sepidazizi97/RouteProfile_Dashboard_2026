@@ -706,34 +706,25 @@ def temporal_bar_chart(
     )
 
 
-def choose_time_tick_interval(chart_data: pd.DataFrame) -> int:
-    """Choose a readable time-axis label interval in minutes."""
+def choose_time_tick_interval(
+    minimum_minute: int,
+    maximum_minute: int,
+) -> int:
+    """Choose 15, 20, 30, or 45-minute labels for the time axis."""
 
-    valid_times = chart_data["trip_datetime"].dropna().sort_values()
-
-    if valid_times.empty:
-        return 30
-
-    time_span_minutes = max(
+    time_span = max(
         1,
-        int(
-            (
-                valid_times.max()
-                - valid_times.min()
-            ).total_seconds()
-            / 60
-        ),
+        maximum_minute - minimum_minute,
     )
 
-    # Aim for roughly 10–16 visible labels across the chart.
     candidates = [15, 20, 30, 45]
-    target_labels = 13
+    target_tick_count = 14
 
     return min(
         candidates,
-        key=lambda minutes: abs(
-            (time_span_minutes / minutes)
-            - target_labels
+        key=lambda interval: abs(
+            (time_span / interval)
+            - target_tick_count
         ),
     )
 
@@ -747,17 +738,17 @@ def combined_direction_bar_chart(
     height: int = 360,
 ):
     """
-    Create a both-directions chart using actual numerical trip time.
+    Create a both-directions chart with a true numerical time axis.
 
-    Trip time remains a continuous temporal variable. A very small visual
-    offset is applied to each direction only to prevent bars with identical
-    start times from completely covering one another. The tooltip always
-    displays the original scheduled start time.
+    The x-axis is minutes after midnight, so the horizontal distance between
+    trips represents the real scheduled time difference. Axis labels are
+    displayed only every 15, 20, 30, or 45 minutes, depending on the span.
     """
 
     chart_data = data.dropna(
         subset=[
             "trip_datetime",
+            "trip_start_time",
             "direction",
             value_column,
         ]
@@ -770,7 +761,10 @@ def combined_direction_bar_chart(
         "mean": "mean",
         "max": "max",
         "sum": "sum",
-    }.get(aggregation, "sum")
+    }.get(
+        aggregation,
+        "sum",
+    )
 
     combined_data = (
         chart_data
@@ -784,7 +778,10 @@ def combined_direction_bar_chart(
             dropna=False,
         )
         .agg(
-            value=(value_column, aggregation_method),
+            value=(
+                value_column,
+                aggregation_method,
+            ),
             trip_codes=(
                 "trip_code",
                 lambda values: ", ".join(
@@ -796,14 +793,14 @@ def combined_direction_bar_chart(
                 ),
             ),
         )
-        .sort_values(
-            [
-                "trip_datetime",
-                "direction",
-                "trip_codes",
-            ]
-        )
     )
+
+    # Convert each trip time to a genuine numerical value: minutes after
+    # midnight. This preserves the actual spacing between scheduled trips.
+    combined_data["time_minutes"] = (
+        combined_data["trip_datetime"].dt.hour * 60
+        + combined_data["trip_datetime"].dt.minute
+    ).astype(float)
 
     available_directions = (
         combined_data["direction"]
@@ -838,67 +835,146 @@ def combined_direction_bar_chart(
         )
     )
 
+    if not direction_order:
+        return None
+
     direction_color_range = [
-        DIRECTION_COLORS.get(direction, "#6B7280")
+        DIRECTION_COLORS.get(
+            direction,
+            "#6B7280",
+        )
         for direction in direction_order
     ]
 
-    # Altair/Vega-Lite does not reliably support xOffset together with a
-    # continuous temporal x-axis. Instead, apply a tiny visual time shift so
-    # same-time trips remain visible without converting time to categories.
-    direction_count = max(1, len(direction_order))
-    center = (direction_count - 1) / 2
-    offset_minutes = {
-        direction: (index - center) * 3
-        for index, direction in enumerate(direction_order)
-    }
+    minimum_minute = int(
+        combined_data["time_minutes"].min()
+    )
+    maximum_minute = int(
+        combined_data["time_minutes"].max()
+    )
 
-    combined_data["plot_datetime"] = (
-        combined_data["trip_datetime"]
-        + pd.to_timedelta(
-            combined_data["direction"]
-            .map(offset_minutes)
-            .fillna(0),
-            unit="m",
+    tick_interval = choose_time_tick_interval(
+        minimum_minute,
+        maximum_minute,
+    )
+
+    axis_minimum = (
+        minimum_minute // tick_interval
+    ) * tick_interval
+
+    axis_maximum = (
+        (
+            maximum_minute
+            + tick_interval
+            - 1
+        )
+        // tick_interval
+    ) * tick_interval
+
+    # Add a small amount of room on both sides so the first and last bars
+    # are not cut off.
+    axis_minimum = max(
+        0,
+        axis_minimum - tick_interval,
+    )
+    axis_maximum = min(
+        24 * 60,
+        axis_maximum + tick_interval,
+    )
+
+    tick_values = list(
+        range(
+            axis_minimum,
+            axis_maximum + 1,
+            tick_interval,
         )
     )
 
-    tick_interval_minutes = choose_time_tick_interval(combined_data)
-    axis_tick_count = {
-        "interval": "minute",
-        "step": tick_interval_minutes,
+    # Build narrow numerical bar ranges around each actual scheduled time.
+    # When two directions have the same time, their bars are placed beside
+    # one another without changing the overall chronological distribution.
+    direction_count = len(direction_order)
+    total_group_width = min(
+        10.0,
+        max(5.0, tick_interval * 0.30),
+    )
+    individual_width = total_group_width / direction_count
+
+    direction_index = {
+        direction: index
+        for index, direction in enumerate(direction_order)
     }
 
-    bar_size = 8 if len(combined_data) >= 30 else 11
+    combined_data["direction_index"] = (
+        combined_data["direction"]
+        .map(direction_index)
+        .fillna(0)
+        .astype(float)
+    )
+
+    combined_data["bar_start"] = (
+        combined_data["time_minutes"]
+        - total_group_width / 2
+        + combined_data["direction_index"]
+        * individual_width
+    )
+
+    combined_data["bar_end"] = (
+        combined_data["bar_start"]
+        + individual_width * 0.90
+    )
+
+    combined_data = combined_data.sort_values(
+        [
+            "time_minutes",
+            "direction_index",
+            "trip_codes",
+        ]
+    )
+
+    time_label_expression = (
+        "(floor(datum.value / 60) < 10 ? '0' : '') + "
+        "floor(datum.value / 60) + ':' + "
+        "((datum.value % 60) < 10 ? '0' : '') + "
+        "(datum.value % 60)"
+    )
 
     return (
         alt.Chart(combined_data)
         .mark_bar(
-            size=bar_size,
             cornerRadiusTopLeft=2,
             cornerRadiusTopRight=2,
-            opacity=0.90,
+            opacity=0.92,
         )
         .encode(
             x=alt.X(
-                "plot_datetime:T",
+                "bar_start:Q",
                 title="Scheduled Trip Start Time",
+                scale=alt.Scale(
+                    domain=[
+                        axis_minimum,
+                        axis_maximum,
+                    ],
+                    nice=False,
+                    zero=False,
+                ),
                 axis=alt.Axis(
-                    format="%H:%M",
+                    values=tick_values,
+                    labelExpr=time_label_expression,
                     labelAngle=-45,
-                    labelOverlap=True,
-                    tickCount=axis_tick_count,
+                    labelOverlap=False,
                     grid=True,
                 ),
-                scale=alt.Scale(
-                    nice=False,
-                    padding=10,
-                ),
+            ),
+            x2=alt.X2(
+                "bar_end:Q"
             ),
             y=alt.Y(
                 "value:Q",
                 title=y_title,
-                scale=alt.Scale(zero=True),
+                scale=alt.Scale(
+                    zero=True,
+                ),
             ),
             color=alt.Color(
                 "direction:N",
@@ -938,7 +1014,6 @@ def combined_direction_bar_chart(
             height=height,
         )
     )
-
 
 def otp_chart_for_direction(
     direction_df: pd.DataFrame,
@@ -1343,9 +1418,9 @@ def display_route_profile(
                 )
 
             st.caption(
-                "Trips are positioned by their actual scheduled start time. "
-                "The time-axis labels are automatically shown every 15, 20, "
-                "30, or 45 minutes, depending on the service span."
+                "Trips are positioned using their actual scheduled start time. "
+                "Time labels are shown at a readable 15, 20, 30, or "
+                "45-minute interval."
             )
 
             st.markdown(
@@ -1486,9 +1561,9 @@ def display_route_profile(
                 )
 
             st.caption(
-                "Trips are positioned by their actual scheduled start time. "
-                "The time-axis labels are automatically shown every 15, 20, "
-                "30, or 45 minutes, depending on the service span."
+                "Trips are positioned using their actual scheduled start time. "
+                "Time labels are shown at a readable 15, 20, 30, or "
+                "45-minute interval."
             )
 
             st.markdown(
