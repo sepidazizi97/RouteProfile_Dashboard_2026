@@ -738,11 +738,12 @@ def combined_direction_bar_chart(
     height: int = 360,
 ):
     """
-    Create a both-directions chart with a true numerical time axis.
+    Create a standard vertical bar chart for both directions while keeping
+    scheduled time as a genuine numerical x-variable.
 
-    The x-axis is minutes after midnight, so the horizontal distance between
-    trips represents the real scheduled time difference. Axis labels are
-    displayed only every 15, 20, 30, or 45 minutes, depending on the span.
+    Trips are positioned according to minutes after midnight. A very small
+    direction-specific offset places simultaneous trips beside one another,
+    while fixed pixel bar widths preserve the appearance of the other charts.
     """
 
     chart_data = data.dropna(
@@ -761,10 +762,7 @@ def combined_direction_bar_chart(
         "mean": "mean",
         "max": "max",
         "sum": "sum",
-    }.get(
-        aggregation,
-        "sum",
-    )
+    }.get(aggregation, "sum")
 
     combined_data = (
         chart_data
@@ -795,8 +793,6 @@ def combined_direction_bar_chart(
         )
     )
 
-    # Convert each trip time to a genuine numerical value: minutes after
-    # midnight. This preserves the actual spacing between scheduled trips.
     combined_data["time_minutes"] = (
         combined_data["trip_datetime"].dt.hour * 60
         + combined_data["trip_datetime"].dt.minute
@@ -839,19 +835,12 @@ def combined_direction_bar_chart(
         return None
 
     direction_color_range = [
-        DIRECTION_COLORS.get(
-            direction,
-            "#6B7280",
-        )
+        DIRECTION_COLORS.get(direction, "#6B7280")
         for direction in direction_order
     ]
 
-    minimum_minute = int(
-        combined_data["time_minutes"].min()
-    )
-    maximum_minute = int(
-        combined_data["time_minutes"].max()
-    )
+    minimum_minute = int(combined_data["time_minutes"].min())
+    maximum_minute = int(combined_data["time_minutes"].max())
 
     tick_interval = choose_time_tick_interval(
         minimum_minute,
@@ -871,8 +860,6 @@ def combined_direction_bar_chart(
         // tick_interval
     ) * tick_interval
 
-    # Add a small amount of room on both sides so the first and last bars
-    # are not cut off.
     axis_minimum = max(
         0,
         axis_minimum - tick_interval,
@@ -890,44 +877,31 @@ def combined_direction_bar_chart(
         )
     )
 
-    # Build narrow numerical bar ranges around each actual scheduled time.
-    # When two directions have the same time, their bars are placed beside
-    # one another without changing the overall chronological distribution.
+    # Small time offsets keep simultaneous directions side by side without
+    # changing the overall time distribution. For two directions, this is
+    # approximately -2 and +2 minutes around the true scheduled time.
     direction_count = len(direction_order)
-    total_group_width = min(
-        10.0,
-        max(5.0, tick_interval * 0.30),
-    )
-    individual_width = total_group_width / direction_count
+    if direction_count == 1:
+        direction_offsets = {
+            direction_order[0]: 0.0
+        }
+    else:
+        offset_spacing = 4.0
+        centre = (direction_count - 1) / 2
+        direction_offsets = {
+            direction: (index - centre) * offset_spacing
+            for index, direction in enumerate(direction_order)
+        }
 
-    direction_index = {
-        direction: index
-        for index, direction in enumerate(direction_order)
-    }
-
-    combined_data["direction_index"] = (
-        combined_data["direction"]
-        .map(direction_index)
-        .fillna(0)
-        .astype(float)
-    )
-
-    combined_data["bar_start"] = (
+    combined_data["plot_time_minutes"] = (
         combined_data["time_minutes"]
-        - total_group_width / 2
-        + combined_data["direction_index"]
-        * individual_width
-    )
-
-    combined_data["bar_end"] = (
-        combined_data["bar_start"]
-        + individual_width * 0.90
+        + combined_data["direction"].map(direction_offsets).fillna(0)
     )
 
     combined_data = combined_data.sort_values(
         [
             "time_minutes",
-            "direction_index",
+            "direction",
             "trip_codes",
         ]
     )
@@ -936,20 +910,20 @@ def combined_direction_bar_chart(
         "(floor(datum.value / 60) < 10 ? '0' : '') + "
         "floor(datum.value / 60) + ':' + "
         "((datum.value % 60) < 10 ? '0' : '') + "
-        "(datum.value % 60)"
+        "floor(datum.value % 60)"
     )
 
     return (
         alt.Chart(combined_data)
         .mark_bar(
-            orient="vertical",
+            size=9,
             cornerRadiusTopLeft=2,
             cornerRadiusTopRight=2,
             opacity=0.92,
         )
         .encode(
             x=alt.X(
-                "bar_start:Q",
+                "plot_time_minutes:Q",
                 title="Scheduled Trip Start Time",
                 scale=alt.Scale(
                     domain=[
@@ -967,9 +941,6 @@ def combined_direction_bar_chart(
                     grid=True,
                 ),
             ),
-            x2=alt.X2(
-                "bar_end:Q"
-            ),
             y=alt.Y(
                 "value:Q",
                 title=y_title,
@@ -977,9 +948,6 @@ def combined_direction_bar_chart(
                     zero=True,
                     nice=True,
                 ),
-            ),
-            y2=alt.Y2(
-                datum=0,
             ),
             color=alt.Color(
                 "direction:N",
