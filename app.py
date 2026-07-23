@@ -715,8 +715,13 @@ def combined_direction_bar_chart(
     height: int = 360,
 ):
     """
-    Create a grouped chart showing both directions side by side
-    at each trip start time.
+    Create an evenly spaced grouped chart for both directions.
+
+    Time is used only to sort and align trips chronologically. The first
+    trip in each direction is paired, followed by the second trip in each
+    direction, and so on. Because the x-axis is categorical, every paired
+    trip position receives equal horizontal spacing even when scheduled
+    headways are uneven.
     """
 
     chart_data = data.dropna(
@@ -737,100 +742,38 @@ def combined_direction_bar_chart(
         "direction",
     ]
 
-    if aggregation == "mean":
-        combined_data = (
-            chart_data
-            .groupby(
-                group_columns,
-                as_index=False,
-                dropna=False,
-            )
-            .agg(
-                value=(
-                    value_column,
-                    "mean",
-                ),
-                trip_codes=(
-                    "trip_code",
-                    lambda values: ", ".join(
-                        sorted(
-                            values.dropna()
-                            .astype(str)
-                            .unique()
-                        )
-                    ),
-                ),
-            )
-        )
+    aggregation_method = {
+        "mean": "mean",
+        "max": "max",
+        "sum": "sum",
+    }.get(
+        aggregation,
+        "sum",
+    )
 
-    elif aggregation == "max":
-        combined_data = (
-            chart_data
-            .groupby(
-                group_columns,
-                as_index=False,
-                dropna=False,
-            )
-            .agg(
-                value=(
-                    value_column,
-                    "max",
-                ),
-                trip_codes=(
-                    "trip_code",
-                    lambda values: ", ".join(
-                        sorted(
-                            values.dropna()
-                            .astype(str)
-                            .unique()
-                        )
-                    ),
-                ),
-            )
+    combined_data = (
+        chart_data
+        .groupby(
+            group_columns,
+            as_index=False,
+            dropna=False,
         )
-
-    else:
-        combined_data = (
-            chart_data
-            .groupby(
-                group_columns,
-                as_index=False,
-                dropna=False,
-            )
-            .agg(
-                value=(
-                    value_column,
-                    "sum",
+        .agg(
+            value=(
+                value_column,
+                aggregation_method,
+            ),
+            trip_codes=(
+                "trip_code",
+                lambda values: ", ".join(
+                    sorted(
+                        values.dropna()
+                        .astype(str)
+                        .unique()
+                    )
                 ),
-                trip_codes=(
-                    "trip_code",
-                    lambda values: ", ".join(
-                        sorted(
-                            values.dropna()
-                            .astype(str)
-                            .unique()
-                        )
-                    ),
-                ),
-            )
+            ),
         )
-
-    trip_order = (
-        combined_data[
-            [
-                "trip_start_time",
-                "trip_datetime",
-            ]
-        ]
-        .drop_duplicates()
-        .sort_values(
-            [
-                "trip_datetime",
-                "trip_start_time",
-            ]
-        )
-        ["trip_start_time"]
-        .tolist()
     )
 
     available_directions = (
@@ -854,8 +797,7 @@ def combined_direction_bar_chart(
 
     direction_order = [
         direction
-        for direction
-        in preferred_direction_order
+        for direction in preferred_direction_order
         if direction in available_directions
     ]
 
@@ -863,8 +805,7 @@ def combined_direction_bar_chart(
         sorted(
             direction
             for direction in available_directions
-            if direction
-            not in preferred_direction_order
+            if direction not in preferred_direction_order
         )
     )
 
@@ -876,6 +817,105 @@ def combined_direction_bar_chart(
         for direction in direction_order
     ]
 
+    # Sort each direction by its true scheduled start time, then assign
+    # an equal-spaced sequence position. Sequence 1 from each direction
+    # appears together, sequence 2 appears together, and so forth.
+    combined_data["direction_sort"] = (
+        combined_data["direction"]
+        .map(
+            {
+                direction: index
+                for index, direction in enumerate(direction_order)
+            }
+        )
+        .fillna(len(direction_order))
+    )
+
+    combined_data = combined_data.sort_values(
+        [
+            "direction_sort",
+            "trip_datetime",
+            "trip_start_time",
+            "trip_codes",
+        ]
+    )
+
+    combined_data["trip_sequence"] = (
+        combined_data
+        .groupby("direction", dropna=False)
+        .cumcount()
+        + 1
+    )
+
+    # Build one axis label per sequence position using the actual times
+    # represented at that position. Examples: "06:00" or "06:00 / 06:12".
+    slot_labels = (
+        combined_data
+        .groupby(
+            "trip_sequence",
+            as_index=False,
+        )
+        .agg(
+            slot_sort_time=(
+                "trip_datetime",
+                "mean",
+            ),
+            paired_times=(
+                "trip_start_time",
+                lambda values: " / ".join(
+                    sorted(
+                        values.dropna()
+                        .astype(str)
+                        .unique(),
+                        key=lambda value: pd.to_datetime(
+                            value,
+                            format="%H:%M",
+                            errors="coerce",
+                        ),
+                    )
+                ),
+            ),
+        )
+        .sort_values(
+            [
+                "slot_sort_time",
+                "trip_sequence",
+            ]
+        )
+    )
+
+    slot_labels["time_slot"] = (
+        slot_labels["paired_times"]
+        .where(
+            slot_labels["paired_times"].ne(""),
+            "Trip "
+            + slot_labels["trip_sequence"].astype(str),
+        )
+    )
+
+    combined_data = combined_data.merge(
+        slot_labels[
+            [
+                "trip_sequence",
+                "time_slot",
+                "slot_sort_time",
+            ]
+        ],
+        on="trip_sequence",
+        how="left",
+    )
+
+    slot_order = (
+        slot_labels
+        .sort_values(
+            [
+                "slot_sort_time",
+                "trip_sequence",
+            ]
+        )["time_slot"]
+        .tolist()
+    )
+
     return (
         alt.Chart(combined_data)
         .mark_bar(
@@ -884,16 +924,16 @@ def combined_direction_bar_chart(
         )
         .encode(
             x=alt.X(
-                "trip_start_time:N",
-                title="Trip Time",
-                sort=trip_order,
+                "time_slot:N",
+                title="Chronologically Paired Trip Times",
+                sort=slot_order,
                 axis=alt.Axis(
                     labelAngle=-45,
                     labelOverlap=False,
-                    labelLimit=90,
+                    labelLimit=115,
                 ),
                 scale=alt.Scale(
-                    paddingInner=0.18,
+                    paddingInner=0.20,
                     paddingOuter=0.08,
                 ),
             ),
@@ -924,8 +964,13 @@ def combined_direction_bar_chart(
             ),
             tooltip=[
                 alt.Tooltip(
+                    "trip_sequence:Q",
+                    title="Paired Trip Position",
+                    format=".0f",
+                ),
+                alt.Tooltip(
                     "trip_start_time:N",
-                    title="Trip Start Time",
+                    title="Actual Trip Start Time",
                 ),
                 alt.Tooltip(
                     "trip_codes:N",
@@ -947,7 +992,6 @@ def combined_direction_bar_chart(
             height=height,
         )
     )
-
 
 def otp_chart_for_direction(
     direction_df: pd.DataFrame,
