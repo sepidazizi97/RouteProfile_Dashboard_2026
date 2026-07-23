@@ -749,10 +749,10 @@ def combined_direction_bar_chart(
     """
     Create a both-directions chart using actual numerical trip time.
 
-    Bars are positioned according to their real scheduled start times, so
-    longer headways create wider gaps and shorter headways create narrower
-    gaps. Axis labels are shown only at a selected 15-, 20-, 30-, or 45-minute
-    interval to keep the chart readable.
+    Trip time remains a continuous temporal variable. A very small visual
+    offset is applied to each direction only to prevent bars with identical
+    start times from completely covering one another. The tooltip always
+    displays the original scheduled start time.
     """
 
     chart_data = data.dropna(
@@ -770,10 +770,7 @@ def combined_direction_bar_chart(
         "mean": "mean",
         "max": "max",
         "sum": "sum",
-    }.get(
-        aggregation,
-        "sum",
-    )
+    }.get(aggregation, "sum")
 
     combined_data = (
         chart_data
@@ -787,10 +784,7 @@ def combined_direction_bar_chart(
             dropna=False,
         )
         .agg(
-            value=(
-                value_column,
-                aggregation_method,
-            ),
+            value=(value_column, aggregation_method),
             trip_codes=(
                 "trip_code",
                 lambda values: ", ".join(
@@ -845,24 +839,36 @@ def combined_direction_bar_chart(
     )
 
     direction_color_range = [
-        DIRECTION_COLORS.get(
-            direction,
-            "#6B7280",
-        )
+        DIRECTION_COLORS.get(direction, "#6B7280")
         for direction in direction_order
     ]
 
-    tick_interval_minutes = choose_time_tick_interval(
-        combined_data
+    # Altair/Vega-Lite does not reliably support xOffset together with a
+    # continuous temporal x-axis. Instead, apply a tiny visual time shift so
+    # same-time trips remain visible without converting time to categories.
+    direction_count = max(1, len(direction_order))
+    center = (direction_count - 1) / 2
+    offset_minutes = {
+        direction: (index - center) * 3
+        for index, direction in enumerate(direction_order)
+    }
+
+    combined_data["plot_datetime"] = (
+        combined_data["trip_datetime"]
+        + pd.to_timedelta(
+            combined_data["direction"]
+            .map(offset_minutes)
+            .fillna(0),
+            unit="m",
+        )
     )
 
+    tick_interval_minutes = choose_time_tick_interval(combined_data)
     axis_tick_count = {
         "interval": "minute",
         "step": tick_interval_minutes,
     }
 
-    # A narrow temporal bar width keeps nearby direction trips distinct while
-    # preserving their true time positions on the continuous x-axis.
     bar_size = 8 if len(combined_data) >= 30 else 11
 
     return (
@@ -875,12 +881,12 @@ def combined_direction_bar_chart(
         )
         .encode(
             x=alt.X(
-                "trip_datetime:T",
-                title="Actual Trip Start Time",
+                "plot_datetime:T",
+                title="Scheduled Trip Start Time",
                 axis=alt.Axis(
                     format="%H:%M",
                     labelAngle=-45,
-                    labelOverlap=False,
+                    labelOverlap=True,
                     tickCount=axis_tick_count,
                     grid=True,
                 ),
@@ -892,9 +898,7 @@ def combined_direction_bar_chart(
             y=alt.Y(
                 "value:Q",
                 title=y_title,
-                scale=alt.Scale(
-                    zero=True,
-                ),
+                scale=alt.Scale(zero=True),
             ),
             color=alt.Color(
                 "direction:N",
@@ -909,14 +913,10 @@ def combined_direction_bar_chart(
                     direction="horizontal",
                 ),
             ),
-            xOffset=alt.XOffset(
-                "direction:N",
-                sort=direction_order,
-            ),
             tooltip=[
                 alt.Tooltip(
                     "trip_start_time:N",
-                    title="Actual Trip Start Time",
+                    title="Scheduled Start Time",
                 ),
                 alt.Tooltip(
                     "trip_codes:N",
@@ -938,6 +938,7 @@ def combined_direction_bar_chart(
             height=height,
         )
     )
+
 
 def otp_chart_for_direction(
     direction_df: pd.DataFrame,
