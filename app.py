@@ -738,12 +738,9 @@ def combined_direction_bar_chart(
     height: int = 360,
 ):
     """
-    Create a standard vertical bar chart for both directions while keeping
-    scheduled time as a genuine numerical x-variable.
-
-    Trips are positioned according to minutes after midnight. A very small
-    direction-specific offset places simultaneous trips beside one another,
-    while fixed pixel bar widths preserve the appearance of the other charts.
+    Create separate side-by-side direction panels while preserving actual
+    numerical time spacing. Bars never overlap or stack because each
+    direction is drawn in its own panel with the same x- and y-scale.
     """
 
     chart_data = data.dropna(
@@ -834,11 +831,6 @@ def combined_direction_bar_chart(
     if not direction_order:
         return None
 
-    direction_color_range = [
-        DIRECTION_COLORS.get(direction, "#6B7280")
-        for direction in direction_order
-    ]
-
     minimum_minute = int(combined_data["time_minutes"].min())
     maximum_minute = int(combined_data["time_minutes"].max())
 
@@ -847,26 +839,20 @@ def combined_direction_bar_chart(
         maximum_minute,
     )
 
-    axis_minimum = (
-        minimum_minute // tick_interval
-    ) * tick_interval
-
-    axis_maximum = (
-        (
-            maximum_minute
-            + tick_interval
-            - 1
-        )
-        // tick_interval
-    ) * tick_interval
-
     axis_minimum = max(
         0,
-        axis_minimum - tick_interval,
+        (minimum_minute // tick_interval) * tick_interval
+        - tick_interval,
     )
+
     axis_maximum = min(
         24 * 60,
-        axis_maximum + tick_interval,
+        (
+            (maximum_minute + tick_interval - 1)
+            // tick_interval
+        )
+        * tick_interval
+        + tick_interval,
     )
 
     tick_values = list(
@@ -877,35 +863,6 @@ def combined_direction_bar_chart(
         )
     )
 
-    # Small time offsets keep simultaneous directions side by side without
-    # changing the overall time distribution. For two directions, this is
-    # approximately -2 and +2 minutes around the true scheduled time.
-    direction_count = len(direction_order)
-    if direction_count == 1:
-        direction_offsets = {
-            direction_order[0]: 0.0
-        }
-    else:
-        offset_spacing = 6.0
-        centre = (direction_count - 1) / 2
-        direction_offsets = {
-            direction: (index - centre) * offset_spacing
-            for index, direction in enumerate(direction_order)
-        }
-
-    combined_data["plot_time_minutes"] = (
-        combined_data["time_minutes"]
-        + combined_data["direction"].map(direction_offsets).fillna(0)
-    )
-
-    combined_data = combined_data.sort_values(
-        [
-            "time_minutes",
-            "direction",
-            "trip_codes",
-        ]
-    )
-
     time_label_expression = (
         "(floor(datum.value / 60) < 10 ? '0' : '') + "
         "floor(datum.value / 60) + ':' + "
@@ -913,79 +870,101 @@ def combined_direction_bar_chart(
         "floor(datum.value % 60)"
     )
 
-    return (
-        alt.Chart(combined_data)
-        .mark_bar(
-            size=9,
-            cornerRadiusTopLeft=2,
-            cornerRadiusTopRight=2,
-            opacity=0.92,
+    panel_width = 600 if len(direction_order) <= 2 else 400
+    charts = []
+
+    for direction in direction_order:
+        direction_data = combined_data[
+            combined_data["direction"] == direction
+        ].copy()
+
+        if direction_data.empty:
+            continue
+
+        direction_color = DIRECTION_COLORS.get(
+            direction,
+            "#6B7280",
         )
-        .encode(
-            x=alt.X(
-                "plot_time_minutes:Q",
-                title="Scheduled Trip Start Time",
-                scale=alt.Scale(
-                    domain=[
-                        axis_minimum,
-                        axis_maximum,
-                    ],
-                    nice=False,
-                    zero=False,
+
+        chart = (
+            alt.Chart(direction_data)
+            .mark_bar(
+                size=10,
+                cornerRadiusTopLeft=2,
+                cornerRadiusTopRight=2,
+            )
+            .encode(
+                x=alt.X(
+                    "time_minutes:Q",
+                    title="Scheduled Trip Start Time",
+                    scale=alt.Scale(
+                        domain=[
+                            axis_minimum,
+                            axis_maximum,
+                        ],
+                        nice=False,
+                        zero=False,
+                    ),
+                    axis=alt.Axis(
+                        values=tick_values,
+                        labelExpr=time_label_expression,
+                        labelAngle=-45,
+                        labelOverlap=False,
+                        grid=True,
+                    ),
                 ),
-                axis=alt.Axis(
-                    values=tick_values,
-                    labelExpr=time_label_expression,
-                    labelAngle=-45,
-                    labelOverlap=False,
-                    grid=True,
-                ),
-            ),
-            y=alt.Y(
-                "value:Q",
-                title=y_title,
-                stack=None,
-                scale=alt.Scale(
-                    zero=True,
-                    nice=True,
-                ),
-            ),
-            color=alt.Color(
-                "direction:N",
-                title="Direction",
-                sort=direction_order,
-                scale=alt.Scale(
-                    domain=direction_order,
-                    range=direction_color_range,
-                ),
-                legend=alt.Legend(
-                    orient="bottom",
-                    direction="horizontal",
-                ),
-            ),
-            tooltip=[
-                alt.Tooltip(
-                    "trip_start_time:N",
-                    title="Scheduled Start Time",
-                ),
-                alt.Tooltip(
-                    "trip_codes:N",
-                    title="Trip",
-                ),
-                alt.Tooltip(
-                    "direction:N",
-                    title="Direction",
-                ),
-                alt.Tooltip(
+                y=alt.Y(
                     "value:Q",
-                    title=tooltip_title,
-                    format=",.1f",
+                    title=y_title,
+                    scale=alt.Scale(
+                        zero=True,
+                        nice=True,
+                    ),
                 ),
-            ],
+                color=alt.value(direction_color),
+                tooltip=[
+                    alt.Tooltip(
+                        "trip_start_time:N",
+                        title="Scheduled Start Time",
+                    ),
+                    alt.Tooltip(
+                        "trip_codes:N",
+                        title="Trip",
+                    ),
+                    alt.Tooltip(
+                        "direction:N",
+                        title="Direction",
+                    ),
+                    alt.Tooltip(
+                        "value:Q",
+                        title=tooltip_title,
+                        format=",.1f",
+                    ),
+                ],
+            )
+            .properties(
+                title=f"Direction {direction}",
+                width=panel_width,
+                height=height,
+            )
         )
-        .properties(
-            width=1250,
-            height=height,
+
+        charts.append(chart)
+
+    if not charts:
+        return None
+
+    if len(charts) == 1:
+        return charts[0]
+
+    return (
+        alt.hconcat(
+            *charts,
+            spacing=24,
+        )
+        .resolve_scale(
+            x="shared",
+            y="shared",
         )
     )
 
@@ -1364,42 +1343,46 @@ def display_route_profile(
 
             st.markdown("### Boardings")
 
-            st.markdown(
-                "#### Both Directions — "
-                "Average Daily Boardings per Trip"
-            )
+            # Routes 25 and 41 keep the original individual-direction format.
+            show_combined_direction_charts = route_name not in {"25", "41"}
 
-            combined_boarding_chart = (
-                combined_direction_bar_chart(
-                    data=service_df,
-                    value_column="average_daily_boardings",
-                    y_title="Average Daily Boardings",
-                    tooltip_title="Average Daily Boardings",
-                    aggregation="sum",
-                    height=380,
-                )
-            )
-
-            if combined_boarding_chart is not None:
-                st.altair_chart(
-                    combined_boarding_chart,
-                    use_container_width=True,
-                )
-            else:
-                st.warning(
-                    "No boarding information is available "
-                    "for the combined-direction chart."
+            if show_combined_direction_charts:
+                st.markdown(
+                    "#### Both Directions — "
+                    "Average Daily Boardings per Trip"
                 )
 
-            st.caption(
-                "Trips are positioned using their actual scheduled start time. "
-                "Time labels are shown at a readable 15, 20, 30, or "
-                "45-minute interval."
-            )
+                combined_boarding_chart = (
+                    combined_direction_bar_chart(
+                        data=service_df,
+                        value_column="average_daily_boardings",
+                        y_title="Average Daily Boardings",
+                        tooltip_title="Average Daily Boardings",
+                        aggregation="sum",
+                        height=360,
+                    )
+                )
 
-            st.markdown(
-                "#### Individual Direction Charts"
-            )
+                if combined_boarding_chart is not None:
+                    st.altair_chart(
+                        combined_boarding_chart,
+                        use_container_width=True,
+                    )
+                else:
+                    st.warning(
+                        "No boarding information is available "
+                        "for the combined-direction chart."
+                    )
+
+                st.caption(
+                    "Directions are displayed in separate side-by-side panels, "
+                    "so bars never overlap. Trip spacing follows the actual "
+                    "scheduled start time."
+                )
+
+                st.markdown(
+                    "#### Individual Direction Charts"
+                )
 
             for direction in directions:
                 direction_df = service_df[
@@ -1507,42 +1490,43 @@ def display_route_profile(
                 "### Median Passenger Load"
             )
 
-            st.markdown(
-                "#### Both Directions — "
-                "Median Passenger Load per Trip"
-            )
-
-            combined_load_chart = (
-                combined_direction_bar_chart(
-                    data=service_df,
-                    value_column="median_passenger_load",
-                    y_title="Median Passenger Load",
-                    tooltip_title="Median Passenger Load",
-                    aggregation="mean",
-                    height=380,
-                )
-            )
-
-            if combined_load_chart is not None:
-                st.altair_chart(
-                    combined_load_chart,
-                    use_container_width=True,
-                )
-            else:
-                st.warning(
-                    "No median passenger-load information "
-                    "is available for the combined-direction chart."
+            if show_combined_direction_charts:
+                st.markdown(
+                    "#### Both Directions — "
+                    "Median Passenger Load per Trip"
                 )
 
-            st.caption(
-                "Trips are positioned using their actual scheduled start time. "
-                "Time labels are shown at a readable 15, 20, 30, or "
-                "45-minute interval."
-            )
+                combined_load_chart = (
+                    combined_direction_bar_chart(
+                        data=service_df,
+                        value_column="median_passenger_load",
+                        y_title="Median Passenger Load",
+                        tooltip_title="Median Passenger Load",
+                        aggregation="mean",
+                        height=360,
+                    )
+                )
 
-            st.markdown(
-                "#### Individual Direction Charts"
-            )
+                if combined_load_chart is not None:
+                    st.altair_chart(
+                        combined_load_chart,
+                        use_container_width=True,
+                    )
+                else:
+                    st.warning(
+                        "No median passenger-load information "
+                        "is available for the combined-direction chart."
+                    )
+
+                st.caption(
+                    "Directions are displayed in separate side-by-side panels, "
+                    "so bars never overlap. Trip spacing follows the actual "
+                    "scheduled start time."
+                )
+
+                st.markdown(
+                    "#### Individual Direction Charts"
+                )
 
             for direction in directions:
                 direction_df = service_df[
