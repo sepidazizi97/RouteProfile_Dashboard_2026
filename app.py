@@ -942,6 +942,7 @@ def combined_direction_bar_chart(
     return (
         alt.Chart(combined_data)
         .mark_bar(
+            orient="vertical",
             cornerRadiusTopLeft=2,
             cornerRadiusTopRight=2,
             opacity=0.92,
@@ -974,7 +975,11 @@ def combined_direction_bar_chart(
                 title=y_title,
                 scale=alt.Scale(
                     zero=True,
+                    nice=True,
                 ),
+            ),
+            y2=alt.Y2(
+                datum=0,
             ),
             color=alt.Color(
                 "direction:N",
