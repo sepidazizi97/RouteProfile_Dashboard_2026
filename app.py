@@ -91,43 +91,200 @@ OTP_COLORS = {
     "Late": "#D1495B",
 }
 
+# Maximum difference, after schedule alignment, for two trips to be
+# treated as the same paired chart position.
+PAIRING_TOLERANCE_MINUTES = 8
+
+# The explicit first-trip anchors are used to align opposite directions.
+# The runtime is retained as schedule information and is used as a fallback
+# offset when an opposite-direction anchor is unavailable.
+#
+# Notes on source descriptions:
+# - Routes 64 and 65 appeared to repeat "E" for the second trip. The second
+#   direction is treated as W.
+# - Route 123 was described as NS, but the supplied examples were W/E, so
+#   the supplied W/E examples are used.
+# - Route 240 did not state direction letters; W/E is assumed.
+# - Route 27 did not state the first direction; S/N is assumed.
+ROUTE_ALIGNMENT_CONFIG = {
+    "1": {
+        "runtime_minutes": 45,
+        "days": {
+            "Weekday": {"anchors": {"W": "06:00", "E": "06:30"}},
+            "Saturday": {"anchors": {"W": "06:53", "E": "07:20"}},
+            "Sunday": {"anchors": {"W": "08:00", "E": "08:45"}},
+        },
+    },
+    "2": {
+        "runtime_minutes": 30,
+        "days": {
+            "Weekday": {"anchors": {"W": "06:00", "E": "06:30"}},
+        },
+    },
+    "3": {
+        "runtime_minutes": 30,
+        "days": {
+            "Weekday": {"anchors": {"S": "05:45", "N": "06:15"}},
+            "Saturday": {"anchors": {"S": "07:00", "N": "07:30"}},
+            "Sunday": {"anchors": {"S": "08:00", "N": "08:30"}},
+        },
+    },
+    "10": {
+        "runtime_minutes": 36,
+        "days": {
+            "Weekday": {"anchors": {"W": "06:00", "E": "06:36"}},
+            "Saturday": {"anchors": {"W": "07:00", "E": "07:36"}},
+        },
+    },
+    "20": {
+        "runtime_minutes": 33,
+        "days": {
+            "Weekday": {"anchors": {"W": "06:15", "E": "06:48"}},
+            "Saturday": {"anchors": {"W": "07:15", "E": "07:48"}},
+        },
+    },
+    "26": {
+        "runtime_minutes": 17,
+        "days": {
+            "Weekday": {"anchors": {"N": "06:00", "S": "06:17"}},
+            "Saturday": {"anchors": {"N": "07:00", "S": "07:18"}},
+        },
+    },
+    "27": {
+        "runtime_minutes": 17,
+        "days": {
+            "Weekday": {"anchors": {"S": "05:20", "N": "05:37"}},
+        },
+    },
+    "40": {
+        "runtime_minutes": 30,
+        "days": {
+            "Weekday": {"anchors": {"W": "05:45", "E": "06:45"}},
+            "Saturday": {"anchors": {"W": "07:00", "E": "07:45"}},
+            "Sunday": {"anchors": {"W": "08:00", "E": "08:45"}},
+        },
+    },
+    "42": {
+        "runtime_minutes": 30,
+        "days": {
+            "Weekday": {"anchors": {"W": "06:00", "E": "06:30"}},
+            "Saturday": {"anchors": {"W": "07:00", "E": "07:30"}},
+        },
+    },
+    "47": {
+        "runtime_minutes": 60,
+        "days": {
+            "Weekday": {"anchors": {"W": "06:00", "E": "07:00"}},
+            "Saturday": {"anchors": {"W": "07:00", "E": "08:00"}},
+            "Sunday": {"anchors": {"W": "08:00", "E": "09:00"}},
+        },
+    },
+    "48": {
+        "runtime_minutes": 30,
+        "days": {
+            "Weekday": {"anchors": {"W": "06:00", "E": "06:30"}},
+            "Saturday": {"anchors": {"W": "07:00", "E": "07:30"}},
+        },
+    },
+    "50": {
+        "runtime_minutes": 10,
+        "days": {
+            "Weekday": {
+                "anchors": {
+                    "Outbound": "07:00",
+                    "Inbound": "07:10",
+                }
+            },
+            "Saturday": {
+                "anchors": {
+                    "Outbound": "07:00",
+                    "Inbound": "07:10",
+                }
+            },
+        },
+    },
+    "64": {
+        "runtime_minutes": 19,
+        "days": {
+            "Weekday": {"anchors": {"E": "06:00", "W": "06:19"}},
+            "Saturday": {"anchors": {"E": "07:00", "W": "07:19"}},
+            "Sunday": {"anchors": {"E": "08:00", "W": "08:18"}},
+        },
+    },
+    "65": {
+        "runtime_minutes": 24,
+        "days": {
+            "Weekday": {"anchors": {"E": "06:00", "W": "06:23"}},
+            "Saturday": {"anchors": {"E": "07:00", "W": "07:23"}},
+        },
+    },
+    "67": {
+        "runtime_minutes": 45,
+        "days": {
+            "Weekday": {"anchors": {"W": "06:00", "E": "06:45"}},
+            "Saturday": {"anchors": {"W": "07:00", "E": "07:25"}},
+        },
+    },
+    "68": {
+        "runtime_minutes": 25,
+        "days": {
+            "Weekday": {"anchors": {"W": "06:00", "E": "06:25"}},
+        },
+    },
+    "123": {
+        "runtime_minutes": 60,
+        "days": {
+            "Weekday": {"anchors": {"W": "05:45", "E": "06:45"}},
+            "Saturday": {"anchors": {"W": "07:00", "E": "07:45"}},
+            "Sunday": {"anchors": {"W": "08:00", "E": "08:45"}},
+        },
+    },
+    "170": {
+        "runtime_minutes": 60,
+        "days": {
+            "Weekday": {"anchors": {"W": "05:17", "E": "06:05"}},
+            "Saturday": {"anchors": {"W": "07:05", "E": "08:05"}},
+        },
+    },
+    "225": {
+        "runtime_minutes": 60,
+        "days": {
+            "Weekday": {"anchors": {"W": "05:45", "E": "06:45"}},
+            "Saturday": {"anchors": {"W": "07:00", "E": "07:45"}},
+            "Sunday": {"anchors": {"W": "08:00", "E": "08:45"}},
+        },
+    },
+    "240": {
+        "runtime_minutes": 30,
+        "days": {
+            "Weekday": {"anchors": {"W": "06:16", "E": "06:45"}},
+            "Saturday": {"anchors": {"W": "07:15", "E": "07:45"}},
+        },
+    },
+}
+
 
 # ============================================================
 # HELPER FUNCTIONS
 # ============================================================
 
-def standardize_column_names(
-    df: pd.DataFrame,
-) -> pd.DataFrame:
+def standardize_column_names(df: pd.DataFrame) -> pd.DataFrame:
     """Convert source column names to lowercase snake_case."""
 
     cleaned = []
 
     for column in df.columns:
         value = str(column).strip()
-        value = re.sub(
-            r"(?<=[a-z0-9])(?=[A-Z])",
-            "_",
-            value,
-        )
-        value = re.sub(
-            r"[^A-Za-z0-9]+",
-            "_",
-            value,
-        )
-        cleaned.append(
-            value.strip("_").lower()
-        )
+        value = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", value)
+        value = re.sub(r"[^A-Za-z0-9]+", "_", value)
+        cleaned.append(value.strip("_").lower())
 
     result = df.copy()
     result.columns = cleaned
-
     return result
 
 
-def safe_numeric(
-    series: pd.Series,
-) -> pd.Series:
+def safe_numeric(series: pd.Series) -> pd.Series:
     """Convert percentages and comma-formatted text to numeric."""
 
     return pd.to_numeric(
@@ -139,9 +296,7 @@ def safe_numeric(
     )
 
 
-def normalize_route_name(
-    value,
-) -> str | None:
+def normalize_route_name(value) -> str | None:
     """Keep route names such as 1, 26S, and 123S formatted correctly."""
 
     if pd.isna(value):
@@ -155,9 +310,7 @@ def normalize_route_name(
     return value
 
 
-def route_sort_key(
-    value,
-):
+def route_sort_key(value):
     """Sort routes naturally: 1, 2, 3, 10, 26, 26S, 123, 123S."""
 
     value = normalize_route_name(value)
@@ -165,30 +318,16 @@ def route_sort_key(
     if value is None:
         return 999999, ""
 
-    match = re.match(
-        r"^(\d+)(.*)$",
-        value,
-    )
+    match = re.match(r"^(\d+)(.*)$", value)
 
     if match:
-        return (
-            int(match.group(1)),
-            match.group(2),
-        )
+        return int(match.group(1)), match.group(2)
 
     return 999999, value
 
 
-def extract_route_from_filename(
-    filename: str,
-) -> str:
-    """
-    Extract the route from filenames such as:
-
-    RouteProfile_Spring_Rt 1.csv
-    RouteProfile_Spring_Rt_26S.csv
-    route_123S.csv
-    """
+def extract_route_from_filename(filename: str) -> str:
+    """Extract the route name from a route-profile filename."""
 
     stem = Path(filename).stem.upper()
 
@@ -198,28 +337,16 @@ def extract_route_from_filename(
     ]
 
     for pattern in patterns:
-        match = re.search(
-            pattern,
-            stem,
-        )
+        match = re.search(pattern, stem)
 
         if match:
-            return normalize_route_name(
-                match.group(1)
-            )
+            return normalize_route_name(match.group(1))
 
     return stem
 
 
-def extract_trip_code(
-    series: pd.Series,
-) -> pd.Series:
-    """
-    Extract the middle portion of the Trip field.
-
-    Example:
-    2 - 2W - 08:30 becomes 2W.
-    """
+def extract_trip_code(series: pd.Series) -> pd.Series:
+    """Extract the middle portion of the Trip field."""
 
     extracted = series.astype(str).str.extract(
         r"^\s*[^-]+-\s*(.*?)\s*-\s*\d{1,2}:\d{2}\s*$"
@@ -229,16 +356,10 @@ def extract_trip_code(
         r"([0-9]+[A-Za-z]+[A-Za-z0-9]*)"
     )[0]
 
-    return (
-        extracted
-        .fillna(fallback)
-        .str.strip()
-    )
+    return extracted.fillna(fallback).str.strip()
 
 
-def format_trip_time(
-    series: pd.Series,
-) -> pd.Series:
+def format_trip_time(series: pd.Series) -> pd.Series:
     """Extract and standardize trip times as HH:MM."""
 
     extracted = series.astype(str).str.extract(
@@ -251,47 +372,20 @@ def format_trip_time(
         errors="coerce",
     )
 
-    return (
-        parsed
-        .dt.strftime("%H:%M")
-        .fillna(extracted)
-    )
+    return parsed.dt.strftime("%H:%M").fillna(extracted)
 
 
-def extract_direction(
-    series: pd.Series,
-) -> pd.Series:
-    """
-    Extract direction from formats such as:
-
-    1E
-    1W0
-    2W
-    2-W
-    OB
-    IB
-    EB
-    WB
-    NB
-    SB
-    CW
-    CCW
-    """
+def extract_direction(series: pd.Series) -> pd.Series:
+    """Extract E/W/N/S/IB/OB/CW/CCW direction labels."""
 
     values = (
         series.astype(str)
         .str.strip()
         .str.upper()
-        .str.replace(
-            " ",
-            "",
-            regex=False,
-        )
+        .str.replace(" ", "", regex=False)
     )
 
-    def parse(
-        value: str,
-    ) -> str:
+    def parse(value: str) -> str:
         if not value or value == "NAN":
             return "Unknown"
 
@@ -309,10 +403,7 @@ def extract_direction(
         ]
 
         for pattern, label in specific:
-            if re.search(
-                pattern,
-                value,
-            ):
+            if re.search(pattern, value):
                 return label
 
         route_direction = re.search(
@@ -328,15 +419,9 @@ def extract_direction(
                 "S": "S",
                 "O": "Outbound",
                 "I": "Inbound",
-            }.get(
-                route_direction.group(1),
-                "Unknown",
-            )
+            }.get(route_direction.group(1), "Unknown")
 
-        fallback = re.search(
-            r"([EWNSOI])",
-            value,
-        )
+        fallback = re.search(r"([EWNSOI])", value)
 
         if fallback:
             return {
@@ -346,14 +431,278 @@ def extract_direction(
                 "S": "S",
                 "O": "Outbound",
                 "I": "Inbound",
-            }.get(
-                fallback.group(1),
-                "Unknown",
-            )
+            }.get(fallback.group(1), "Unknown")
 
         return "Unknown"
 
     return values.apply(parse)
+
+
+def time_text_to_minutes(value: str | None) -> float | None:
+    """Convert HH:MM text to minutes after midnight."""
+
+    if value is None or pd.isna(value):
+        return None
+
+    parsed = pd.to_datetime(
+        str(value),
+        format="%H:%M",
+        errors="coerce",
+    )
+
+    if pd.isna(parsed):
+        return None
+
+    return float(parsed.hour * 60 + parsed.minute)
+
+
+def minutes_to_time_text(value: float | int) -> str:
+    """Convert minutes after midnight to a wrapped HH:MM label."""
+
+    rounded = int(round(float(value))) % (24 * 60)
+    return f"{rounded // 60:02d}:{rounded % 60:02d}"
+
+
+def get_alignment_settings(
+    route_name: str,
+    service_day: str,
+    available_directions: list[str],
+) -> dict:
+    """
+    Return anchor offsets used to align the two directions.
+
+    The first configured direction is the reference direction and receives
+    an offset of zero. Every other configured direction is shifted backwards
+    by the difference between its anchor and the reference anchor.
+    """
+
+    route_name = normalize_route_name(route_name)
+    route_config = ROUTE_ALIGNMENT_CONFIG.get(route_name, {})
+    runtime_minutes = route_config.get("runtime_minutes")
+    day_config = route_config.get("days", {}).get(service_day, {})
+    anchors = day_config.get("anchors", {}).copy()
+
+    available_directions = [
+        direction
+        for direction in available_directions
+        if direction and direction != "Unknown"
+    ]
+
+    configured_directions = [
+        direction
+        for direction in anchors
+        if direction in available_directions
+    ]
+
+    # If there is no exact service-day entry, use the direction order in
+    # the data and the route runtime as a reasonable fallback.
+    if not configured_directions:
+        if not available_directions:
+            return {
+                "reference_direction": None,
+                "reference_anchor_minutes": None,
+                "direction_offsets": {},
+                "runtime_minutes": runtime_minutes,
+                "uses_explicit_anchors": False,
+            }
+
+        reference_direction = available_directions[0]
+        direction_offsets = {reference_direction: 0.0}
+
+        if len(available_directions) >= 2 and runtime_minutes is not None:
+            direction_offsets[available_directions[1]] = float(runtime_minutes)
+
+        for direction in available_directions[2:]:
+            direction_offsets.setdefault(direction, 0.0)
+
+        return {
+            "reference_direction": reference_direction,
+            "reference_anchor_minutes": None,
+            "direction_offsets": direction_offsets,
+            "runtime_minutes": runtime_minutes,
+            "uses_explicit_anchors": False,
+        }
+
+    reference_direction = configured_directions[0]
+    reference_anchor_minutes = time_text_to_minutes(
+        anchors[reference_direction]
+    )
+
+    direction_offsets = {}
+
+    for direction in available_directions:
+        anchor_minutes = time_text_to_minutes(anchors.get(direction))
+
+        if (
+            anchor_minutes is not None
+            and reference_anchor_minutes is not None
+        ):
+            offset = anchor_minutes - reference_anchor_minutes
+
+            # Handle a possible crossing of midnight.
+            if offset < -720:
+                offset += 1440
+            elif offset > 720:
+                offset -= 1440
+
+            direction_offsets[direction] = float(offset)
+        elif direction == reference_direction:
+            direction_offsets[direction] = 0.0
+        elif runtime_minutes is not None:
+            direction_offsets[direction] = float(runtime_minutes)
+        else:
+            direction_offsets[direction] = 0.0
+
+    return {
+        "reference_direction": reference_direction,
+        "reference_anchor_minutes": reference_anchor_minutes,
+        "direction_offsets": direction_offsets,
+        "runtime_minutes": runtime_minutes,
+        "uses_explicit_anchors": True,
+    }
+
+
+def assign_alignment_groups(
+    data: pd.DataFrame,
+    route_name: str,
+    service_day: str,
+    tolerance_minutes: int = PAIRING_TOLERANCE_MINUTES,
+) -> tuple[pd.DataFrame, dict]:
+    """
+    Align opposite-direction trips into shared chart positions.
+
+    Each actual trip time is shifted by its direction's schedule offset.
+    Shifted times within the tolerance are clustered into the same chart
+    position. The actual trip time is retained for the tooltip.
+    """
+
+    result = data.copy()
+
+    available_directions = (
+        result["direction"]
+        .dropna()
+        .astype(str)
+        .unique()
+        .tolist()
+    )
+
+    settings = get_alignment_settings(
+        route_name=route_name,
+        service_day=service_day,
+        available_directions=available_directions,
+    )
+
+    result["actual_minutes"] = (
+        result["trip_datetime"].dt.hour * 60
+        + result["trip_datetime"].dt.minute
+    ).astype(float)
+
+    result["alignment_offset_minutes"] = (
+        result["direction"]
+        .map(settings["direction_offsets"])
+        .fillna(0.0)
+        .astype(float)
+    )
+
+    result["adjusted_minutes"] = (
+        result["actual_minutes"]
+        - result["alignment_offset_minutes"]
+    )
+
+    # Wrap early-morning values when an offset crosses midnight.
+    result.loc[
+        result["adjusted_minutes"] < 0,
+        "adjusted_minutes",
+    ] += 1440
+
+    sortable = result.sort_values(
+        [
+            "adjusted_minutes",
+            "actual_minutes",
+            "direction",
+            "trip_code",
+        ]
+    ).copy()
+
+    clusters: list[dict] = []
+    assigned_cluster_ids: dict[int, int] = {}
+
+    for row_index, row in sortable.iterrows():
+        adjusted_time = float(row["adjusted_minutes"])
+
+        eligible_clusters = [
+            cluster
+            for cluster in clusters
+            if abs(adjusted_time - cluster["centre"]) <= tolerance_minutes
+        ]
+
+        if eligible_clusters:
+            selected = min(
+                eligible_clusters,
+                key=lambda cluster: abs(
+                    adjusted_time - cluster["centre"]
+                ),
+            )
+
+            selected["values"].append(adjusted_time)
+            selected["centre"] = float(
+                sum(selected["values"])
+                / len(selected["values"])
+            )
+        else:
+            selected = {
+                "id": len(clusters),
+                "values": [adjusted_time],
+                "centre": adjusted_time,
+            }
+            clusters.append(selected)
+
+        assigned_cluster_ids[row_index] = selected["id"]
+
+    result["alignment_group_id"] = result.index.map(
+        assigned_cluster_ids
+    )
+
+    cluster_centres = {
+        cluster["id"]: cluster["centre"]
+        for cluster in clusters
+    }
+
+    result["alignment_minutes"] = (
+        result["alignment_group_id"]
+        .map(cluster_centres)
+        .astype(float)
+    )
+
+    ordered_centres = sorted(
+        result["alignment_minutes"]
+        .dropna()
+        .unique()
+        .tolist()
+    )
+
+    centre_to_order = {
+        centre: order
+        for order, centre in enumerate(ordered_centres)
+    }
+
+    result["alignment_order"] = (
+        result["alignment_minutes"]
+        .map(centre_to_order)
+        .astype(int)
+    )
+
+    result["alignment_label"] = result[
+        "alignment_minutes"
+    ].apply(minutes_to_time_text)
+
+    result["schedule_offset_minutes"] = (
+        result["alignment_offset_minutes"]
+        .round()
+        .astype(int)
+    )
+
+    return result, settings
 
 
 def clean_route_file(
@@ -368,25 +717,18 @@ def clean_route_file(
         "day": "service_day",
         "service_day": "service_day",
         "serviceday": "service_day",
-
         "trip": "trip",
-
         "averagedailyboardings": "average_daily_boardings",
         "average_daily_boardings": "average_daily_boardings",
-
         "medianpassengerload": "median_passenger_load",
         "median_passenger_load": "median_passenger_load",
-
         "early": "percent_early",
         "percent_early": "percent_early",
-
         "ontime": "percent_on_time",
         "on_time": "percent_on_time",
         "percent_on_time": "percent_on_time",
-
         "late": "percent_late",
         "percent_late": "percent_late",
-
         "totalfarecounts": "total_fare_counts",
         "total_fare_counts": "total_fare_counts",
     }
@@ -418,15 +760,11 @@ def clean_route_file(
 
     if missing:
         raise ValueError(
-            f"{route_name}: missing columns: "
-            f"{', '.join(missing)}. "
-            f"Available columns: "
-            f"{', '.join(df.columns)}"
+            f"{route_name}: missing columns: {', '.join(missing)}. "
+            f"Available columns: {', '.join(df.columns)}"
         )
 
-    df["route_short_name"] = normalize_route_name(
-        route_name
-    )
+    df["route_short_name"] = normalize_route_name(route_name)
 
     df["service_day"] = (
         df["service_day"]
@@ -444,38 +782,18 @@ def clean_route_file(
         )
     )
 
-    df["trip"] = (
-        df["trip"]
-        .astype(str)
-        .str.strip()
-    )
+    df["trip"] = df["trip"].astype(str).str.strip()
+    df["trip_code"] = extract_trip_code(df["trip"])
+    df["direction"] = extract_direction(df["trip_code"])
 
-    df["trip_code"] = extract_trip_code(
-        df["trip"]
-    )
-
-    df["direction"] = extract_direction(
-        df["trip_code"]
-    )
-
-    unknown = df["direction"].eq(
-        "Unknown"
-    )
+    unknown = df["direction"].eq("Unknown")
 
     if unknown.any():
-        df.loc[
-            unknown,
-            "direction",
-        ] = extract_direction(
-            df.loc[
-                unknown,
-                "trip",
-            ]
+        df.loc[unknown, "direction"] = extract_direction(
+            df.loc[unknown, "trip"]
         )
 
-    df["trip_start_time"] = format_trip_time(
-        df["trip"]
-    )
+    df["trip_start_time"] = format_trip_time(df["trip"])
 
     df["trip_datetime"] = pd.to_datetime(
         df["trip_start_time"],
@@ -493,9 +811,7 @@ def clean_route_file(
     ]
 
     for column in numeric_columns:
-        df[column] = safe_numeric(
-            df[column]
-        )
+        df[column] = safe_numeric(df[column])
 
     otp_columns = [
         "percent_early",
@@ -503,25 +819,11 @@ def clean_route_file(
         "percent_late",
     ]
 
-    row_max = df[otp_columns].max(
-        axis=1,
-        skipna=True,
-    )
+    row_max = df[otp_columns].max(axis=1, skipna=True)
+    decimal_rows = row_max.notna() & row_max.le(1.5)
 
-    decimal_rows = (
-        row_max.notna()
-        & row_max.le(1.5)
-    )
-
-    df.loc[
-        decimal_rows,
-        otp_columns,
-    ] = (
-        df.loc[
-            decimal_rows,
-            otp_columns,
-        ]
-        * 100
+    df.loc[decimal_rows, otp_columns] = (
+        df.loc[decimal_rows, otp_columns] * 100
     )
 
     missing_on_time = (
@@ -530,32 +832,17 @@ def clean_route_file(
         & df["percent_late"].notna()
     )
 
-    df.loc[
-        missing_on_time,
-        "percent_on_time",
-    ] = (
+    df.loc[missing_on_time, "percent_on_time"] = (
         100
-        - df.loc[
-            missing_on_time,
-            "percent_early",
-        ]
-        - df.loc[
-            missing_on_time,
-            "percent_late",
-        ]
+        - df.loc[missing_on_time, "percent_early"]
+        - df.loc[missing_on_time, "percent_late"]
     )
 
     for column in otp_columns:
-        df[column] = df[column].clip(
-            0,
-            100,
-        )
+        df[column] = df[column].clip(0, 100)
 
     return df.dropna(
-        subset=[
-            "service_day",
-            "trip_start_time",
-        ],
+        subset=["service_day", "trip_start_time"],
         how="all",
     )
 
@@ -564,9 +851,7 @@ def clean_route_file(
 def load_all_route_files() -> pd.DataFrame:
     """Read and combine every CSV in the repository data folder."""
 
-    csv_files = sorted(
-        DATA_FOLDER.glob("*.csv")
-    )
+    csv_files = sorted(DATA_FOLDER.glob("*.csv"))
 
     if not csv_files:
         return pd.DataFrame()
@@ -575,47 +860,27 @@ def load_all_route_files() -> pd.DataFrame:
     errors = []
 
     for file_path in csv_files:
-        route_name = extract_route_from_filename(
-            file_path.name
-        )
+        route_name = extract_route_from_filename(file_path.name)
 
         try:
-            raw = pd.read_csv(
-                file_path
-            )
-
-            cleaned = clean_route_file(
-                raw,
-                route_name,
-            )
-
-            cleaned["source_file"] = (
-                file_path.name
-            )
-
+            raw = pd.read_csv(file_path)
+            cleaned = clean_route_file(raw, route_name)
+            cleaned["source_file"] = file_path.name
             frames.append(cleaned)
 
         except Exception as error:
-            errors.append(
-                f"{file_path.name}: {error}"
-            )
+            errors.append(f"{file_path.name}: {error}")
 
     if errors:
         st.warning(
             "Some files could not be loaded:\n\n"
-            + "\n\n".join(
-                f"- {error}"
-                for error in errors
-            )
+            + "\n\n".join(f"- {error}" for error in errors)
         )
 
     if not frames:
         return pd.DataFrame()
 
-    return pd.concat(
-        frames,
-        ignore_index=True,
-    )
+    return pd.concat(frames, ignore_index=True)
 
 
 # ============================================================
@@ -632,10 +897,7 @@ def temporal_bar_chart(
     """Create a separate-direction chart using actual trip time."""
 
     chart_data = data.dropna(
-        subset=[
-            "trip_datetime",
-            value_column,
-        ]
+        subset=["trip_datetime", value_column]
     ).copy()
 
     return (
@@ -655,27 +917,19 @@ def temporal_bar_chart(
                     tickCount=24,
                     labelOverlap=True,
                 ),
-                scale=alt.Scale(
-                    nice=False,
-                ),
+                scale=alt.Scale(nice=False),
             ),
             y=alt.Y(
                 f"{value_column}:Q",
                 title=y_title,
-                scale=alt.Scale(
-                    zero=True,
-                ),
+                scale=alt.Scale(zero=True),
             ),
             color=alt.Color(
                 "direction:N",
                 title="Direction",
                 scale=alt.Scale(
-                    domain=list(
-                        DIRECTION_COLORS.keys()
-                    ),
-                    range=list(
-                        DIRECTION_COLORS.values()
-                    ),
+                    domain=list(DIRECTION_COLORS.keys()),
+                    range=list(DIRECTION_COLORS.values()),
                 ),
                 legend=None,
             ),
@@ -699,15 +953,14 @@ def temporal_bar_chart(
                 ),
             ],
         )
-        .properties(
-            width=1250,
-            height=height,
-        )
+        .properties(width=1250, height=height)
     )
 
 
 def combined_direction_bar_chart(
     data: pd.DataFrame,
+    route_name: str,
+    service_day: str,
     value_column: str,
     y_title: str,
     tooltip_title: str,
@@ -715,11 +968,11 @@ def combined_direction_bar_chart(
     height: int = 360,
 ):
     """
-    Create an evenly spaced grouped bar chart for both directions.
+    Create an evenly spaced, schedule-aligned grouped bar chart.
 
-    Trip start time remains the descriptive x-axis variable, but it is
-    treated as an ordered category. This gives every time position the
-    same horizontal spacing while preserving chronological order.
+    Opposite directions are shifted using the supplied first-trip anchors.
+    Trips whose adjusted times differ by no more than the configured
+    tolerance are placed beside one another in the same chart position.
     """
 
     chart_data = data.dropna(
@@ -732,32 +985,45 @@ def combined_direction_bar_chart(
     ).copy()
 
     if chart_data.empty:
-        return None
+        return None, None
+
+    chart_data, settings = assign_alignment_groups(
+        data=chart_data,
+        route_name=route_name,
+        service_day=service_day,
+    )
 
     aggregation_method = {
         "mean": "mean",
         "max": "max",
         "sum": "sum",
-    }.get(
-        aggregation,
-        "sum",
-    )
+    }.get(aggregation, "sum")
 
     combined_data = (
         chart_data
         .groupby(
             [
-                "trip_start_time",
-                "trip_datetime",
+                "alignment_group_id",
+                "alignment_order",
+                "alignment_label",
+                "alignment_minutes",
                 "direction",
+                "schedule_offset_minutes",
             ],
             as_index=False,
             dropna=False,
         )
         .agg(
-            value=(
-                value_column,
-                aggregation_method,
+            value=(value_column, aggregation_method),
+            actual_start_times=(
+                "trip_start_time",
+                lambda values: ", ".join(
+                    sorted(
+                        values.dropna()
+                        .astype(str)
+                        .unique()
+                    )
+                ),
             ),
             trip_codes=(
                 "trip_code",
@@ -806,48 +1072,39 @@ def combined_direction_bar_chart(
     )
 
     direction_color_range = [
-        DIRECTION_COLORS.get(
-            direction,
-            "#6B7280",
-        )
+        DIRECTION_COLORS.get(direction, "#6B7280")
         for direction in direction_order
     ]
 
-    # Sort the descriptive time labels chronologically.
-    time_order = (
+    pair_order_table = (
         combined_data[
             [
-                "trip_start_time",
-                "trip_datetime",
+                "alignment_label",
+                "alignment_order",
             ]
         ]
         .drop_duplicates()
-        .sort_values(
-            [
-                "trip_datetime",
-                "trip_start_time",
-            ]
-        )
-        ["trip_start_time"]
-        .tolist()
+        .sort_values("alignment_order")
     )
 
-    # Display fewer labels when there are many trips while retaining
-    # every bar and equal spacing between all categorical time positions.
-    number_of_times = len(time_order)
+    alignment_order = pair_order_table[
+        "alignment_label"
+    ].tolist()
 
-    if number_of_times <= 16:
+    number_of_positions = len(alignment_order)
+
+    if number_of_positions <= 16:
         label_step = 1
-    elif number_of_times <= 32:
+    elif number_of_positions <= 32:
         label_step = 2
-    elif number_of_times <= 48:
+    elif number_of_positions <= 48:
         label_step = 3
     else:
         label_step = 4
 
-    visible_time_labels = time_order[::label_step]
+    visible_labels = alignment_order[::label_step]
 
-    return (
+    chart = (
         alt.Chart(combined_data)
         .mark_bar(
             cornerRadiusTopLeft=2,
@@ -855,14 +1112,14 @@ def combined_direction_bar_chart(
         )
         .encode(
             x=alt.X(
-                "trip_start_time:N",
-                title="Trip Start Time",
-                sort=time_order,
+                "alignment_label:N",
+                title="Aligned Trip Position",
+                sort=alignment_order,
                 axis=alt.Axis(
                     labelAngle=-45,
                     labelOverlap=False,
                     labelLimit=90,
-                    values=visible_time_labels,
+                    values=visible_labels,
                 ),
                 scale=alt.Scale(
                     paddingInner=0.20,
@@ -877,9 +1134,7 @@ def combined_direction_bar_chart(
             y=alt.Y(
                 "value:Q",
                 title=y_title,
-                scale=alt.Scale(
-                    zero=True,
-                ),
+                scale=alt.Scale(zero=True),
             ),
             color=alt.Color(
                 "direction:N",
@@ -896,8 +1151,12 @@ def combined_direction_bar_chart(
             ),
             tooltip=[
                 alt.Tooltip(
-                    "trip_start_time:N",
-                    title="Trip Start Time",
+                    "alignment_label:N",
+                    title="Aligned Position",
+                ),
+                alt.Tooltip(
+                    "actual_start_times:N",
+                    title="Actual Start Time",
                 ),
                 alt.Tooltip(
                     "trip_codes:N",
@@ -908,21 +1167,24 @@ def combined_direction_bar_chart(
                     title="Direction",
                 ),
                 alt.Tooltip(
+                    "schedule_offset_minutes:Q",
+                    title="Alignment Offset (min)",
+                    format=".0f",
+                ),
+                alt.Tooltip(
                     "value:Q",
                     title=tooltip_title,
                     format=",.1f",
                 ),
             ],
         )
-        .properties(
-            width=1250,
-            height=height,
-        )
+        .properties(width=1250, height=height)
     )
 
-def otp_chart_for_direction(
-    direction_df: pd.DataFrame,
-):
+    return chart, settings
+
+
+def otp_chart_for_direction(direction_df: pd.DataFrame):
     """Create a categorical OTP chart for one direction."""
 
     direction_df = direction_df.sort_values(
@@ -946,8 +1208,7 @@ def otp_chart_for_direction(
                 "trip_datetime",
                 "trip_start_time",
             ]
-        )
-        ["trip_start_time"]
+        )["trip_start_time"]
         .tolist()
     )
 
@@ -963,18 +1224,9 @@ def otp_chart_for_direction(
             dropna=False,
         )
         .agg(
-            percent_on_time=(
-                "percent_on_time",
-                "mean",
-            ),
-            percent_early=(
-                "percent_early",
-                "mean",
-            ),
-            percent_late=(
-                "percent_late",
-                "mean",
-            ),
+            percent_on_time=("percent_on_time", "mean"),
+            percent_early=("percent_early", "mean"),
+            percent_late=("percent_late", "mean"),
         )
     )
 
@@ -991,9 +1243,7 @@ def otp_chart_for_direction(
         ],
         var_name="performance_type",
         value_name="percent",
-    ).dropna(
-        subset=["percent"]
-    )
+    ).dropna(subset=["percent"])
 
     otp_long["performance_type"] = (
         otp_long["performance_type"]
@@ -1042,34 +1292,17 @@ def otp_chart_for_direction(
                 "percent:Q",
                 title="Percent",
                 stack="zero",
-                scale=alt.Scale(
-                    domain=[0, 100],
-                ),
+                scale=alt.Scale(domain=[0, 100]),
                 axis=alt.Axis(
-                    values=[
-                        0,
-                        20,
-                        40,
-                        60,
-                        80,
-                        100,
-                    ]
+                    values=[0, 20, 40, 60, 80, 100]
                 ),
             ),
             color=alt.Color(
                 "performance_type:N",
                 title="Performance Type",
-                sort=[
-                    "On-Time",
-                    "Early",
-                    "Late",
-                ],
+                sort=["On-Time", "Early", "Late"],
                 scale=alt.Scale(
-                    domain=[
-                        "On-Time",
-                        "Early",
-                        "Late",
-                    ],
+                    domain=["On-Time", "Early", "Late"],
                     range=[
                         OTP_COLORS["On-Time"],
                         OTP_COLORS["Early"],
@@ -1077,9 +1310,7 @@ def otp_chart_for_direction(
                     ],
                 ),
             ),
-            order=alt.Order(
-                "performance_order:Q"
-            ),
+            order=alt.Order("performance_order:Q"),
             tooltip=[
                 alt.Tooltip(
                     "trip_start_time:N",
@@ -1104,11 +1335,44 @@ def otp_chart_for_direction(
                 ),
             ],
         )
-        .properties(
-            width=1250,
-            height=300,
-        )
+        .properties(width=1250, height=300)
     )
+
+
+def alignment_caption(
+    route_name: str,
+    service_day: str,
+    settings: dict | None,
+) -> str:
+    """Create a concise explanation below a combined-direction chart."""
+
+    if not settings:
+        return (
+            "Trips are evenly spaced and paired using their adjusted "
+            "schedule position."
+        )
+
+    runtime = settings.get("runtime_minutes")
+    used_explicit = settings.get("uses_explicit_anchors", False)
+
+    if used_explicit:
+        message = (
+            f"Route {route_name} {service_day} trips are aligned using "
+            f"the supplied first-trip anchors. Actual start times may vary "
+            f"by up to about {PAIRING_TOLERANCE_MINUTES} minutes and still "
+            f"appear in the same paired position."
+        )
+    else:
+        message = (
+            f"No exact {service_day} anchor was configured for Route "
+            f"{route_name}; the chart uses the route runtime as a fallback "
+            f"alignment offset."
+        )
+
+    if runtime is not None:
+        message += f" Approximate stated runtime: {runtime} minutes."
+
+    return message
 
 
 # ============================================================
@@ -1121,69 +1385,28 @@ def display_route_profile(
 ):
     """Display all dashboard sections for one route."""
 
-    st.markdown(
-        f"## Route {route_name}"
-    )
+    st.markdown(f"## Route {route_name}")
 
-    total_boardings = (
-        route_df["total_fare_counts"]
-        .sum()
-    )
-
-    total_daily_average = (
-        route_df["average_daily_boardings"]
-        .sum()
-    )
-
-    average_load = (
-        route_df["median_passenger_load"]
-        .mean()
-    )
-
-    average_otp = (
-        route_df["percent_on_time"]
-        .mean()
-    )
-
-    average_late = (
-        route_df["percent_late"]
-        .mean()
-    )
+    total_boardings = route_df["total_fare_counts"].sum()
+    total_daily_average = route_df["average_daily_boardings"].sum()
+    average_load = route_df["median_passenger_load"].mean()
+    average_otp = route_df["percent_on_time"].mean()
+    average_late = route_df["percent_late"].mean()
 
     m1, m2, m3, m4, m5 = st.columns(5)
 
-    m1.metric(
-        "Total Boardings",
-        f"{total_boardings:,.0f}",
-    )
-
+    m1.metric("Total Boardings", f"{total_boardings:,.0f}")
     m2.metric(
         "Total Average Daily Boardings",
         f"{total_daily_average:,.1f}",
     )
-
-    m3.metric(
-        "Avg. Median Load",
-        f"{average_load:.1f}",
-    )
-
-    m4.metric(
-        "Avg. On-Time",
-        f"{average_otp:.1f}%",
-    )
-
-    m5.metric(
-        "Avg. Late",
-        f"{average_late:.1f}%",
-    )
+    m3.metric("Avg. Median Load", f"{average_load:.1f}")
+    m4.metric("Avg. On-Time", f"{average_otp:.1f}%")
+    m5.metric("Avg. Late", f"{average_late:.1f}%")
 
     st.divider()
 
-    preferred_days = [
-        "Weekday",
-        "Saturday",
-        "Sunday",
-    ]
+    preferred_days = ["Weekday", "Saturday", "Sunday"]
 
     available_days = (
         route_df["service_day"]
@@ -1208,23 +1431,16 @@ def display_route_profile(
 
     if not ordered_days:
         st.warning(
-            "No service-day categories were found "
-            "for this route."
+            "No service-day categories were found for this route."
         )
         return
 
-    day_tabs = st.tabs(
-        ordered_days
-    )
+    day_tabs = st.tabs(ordered_days)
 
-    for day_tab, service_day in zip(
-        day_tabs,
-        ordered_days,
-    ):
+    for day_tab, service_day in zip(day_tabs, ordered_days):
         with day_tab:
             service_df = route_df[
-                route_df["service_day"]
-                == service_day
+                route_df["service_day"] == service_day
             ].copy()
 
             service_df = service_df.dropna(
@@ -1248,7 +1464,7 @@ def display_route_profile(
                 unsafe_allow_html=True,
             )
 
-            directions = (
+            available_direction_values = (
                 service_df["direction"]
                 .dropna()
                 .unique()
@@ -1270,16 +1486,11 @@ def display_route_profile(
             directions = [
                 direction
                 for direction in preferred_directions
-                if direction in directions
+                if direction in available_direction_values
             ] + sorted(
                 direction
-                for direction
-                in service_df["direction"]
-                .dropna()
-                .unique()
-                .tolist()
-                if direction
-                not in preferred_directions
+                for direction in available_direction_values
+                if direction not in preferred_directions
             )
 
             if not directions:
@@ -1301,15 +1512,18 @@ def display_route_profile(
                     "Average Daily Boardings per Trip"
                 )
 
-                combined_boarding_chart = (
-                    combined_direction_bar_chart(
-                        data=service_df,
-                        value_column="average_daily_boardings",
-                        y_title="Average Daily Boardings",
-                        tooltip_title="Average Daily Boardings",
-                        aggregation="sum",
-                        height=380,
-                    )
+                (
+                    combined_boarding_chart,
+                    boarding_alignment_settings,
+                ) = combined_direction_bar_chart(
+                    data=service_df,
+                    route_name=route_name,
+                    service_day=service_day,
+                    value_column="average_daily_boardings",
+                    y_title="Average Daily Boardings",
+                    tooltip_title="Average Daily Boardings",
+                    aggregation="sum",
+                    height=380,
                 )
 
                 if combined_boarding_chart is not None:
@@ -1317,43 +1531,35 @@ def display_route_profile(
                         combined_boarding_chart,
                         use_container_width=True,
                     )
+
+                    st.caption(
+                        alignment_caption(
+                            route_name=route_name,
+                            service_day=service_day,
+                            settings=boarding_alignment_settings,
+                        )
+                    )
                 else:
                     st.warning(
                         "No boarding information is available "
                         "for the combined-direction chart."
                     )
 
-                st.caption(
-                    "Trip start time is used as an ordered descriptive "
-                    "category, so every bar position has equal spacing."
-                )
-
-            st.markdown(
-                "#### Individual Direction Charts"
-            )
+            st.markdown("#### Individual Direction Charts")
 
             for direction in directions:
                 direction_df = service_df[
-                    service_df["direction"]
-                    == direction
+                    service_df["direction"] == direction
                 ].copy()
 
-                st.markdown(
-                    f"#### Direction {direction}"
-                )
+                st.markdown(f"#### Direction {direction}")
 
                 direction_total = (
-                    direction_df[
-                        "total_fare_counts"
-                    ]
-                    .sum()
+                    direction_df["total_fare_counts"].sum()
                 )
 
                 direction_daily_average = (
-                    direction_df[
-                        "average_daily_boardings"
-                    ]
-                    .sum()
+                    direction_df["average_daily_boardings"].sum()
                 )
 
                 c1, c2 = st.columns(2)
@@ -1379,14 +1585,11 @@ def display_route_profile(
                         ],
                         as_index=False,
                         dropna=False,
-                    )
-                    ["total_fare_counts"]
+                    )["total_fare_counts"]
                     .sum()
                 )
 
-                st.markdown(
-                    "##### Total Boardings per Trip"
-                )
+                st.markdown("##### Total Boardings per Trip")
 
                 st.altair_chart(
                     temporal_bar_chart(
@@ -1409,8 +1612,7 @@ def display_route_profile(
                         ],
                         as_index=False,
                         dropna=False,
-                    )
-                    ["average_daily_boardings"]
+                    )["average_daily_boardings"]
                     .sum()
                 )
 
@@ -1434,9 +1636,7 @@ def display_route_profile(
             # MEDIAN PASSENGER LOAD
             # ------------------------------------------------
 
-            st.markdown(
-                "### Median Passenger Load"
-            )
+            st.markdown("### Median Passenger Load")
 
             if route_name not in {"25", "41"}:
                 st.markdown(
@@ -1444,15 +1644,18 @@ def display_route_profile(
                     "Median Passenger Load per Trip"
                 )
 
-                combined_load_chart = (
-                    combined_direction_bar_chart(
-                        data=service_df,
-                        value_column="median_passenger_load",
-                        y_title="Median Passenger Load",
-                        tooltip_title="Median Passenger Load",
-                        aggregation="mean",
-                        height=380,
-                    )
+                (
+                    combined_load_chart,
+                    load_alignment_settings,
+                ) = combined_direction_bar_chart(
+                    data=service_df,
+                    route_name=route_name,
+                    service_day=service_day,
+                    value_column="median_passenger_load",
+                    y_title="Median Passenger Load",
+                    tooltip_title="Median Passenger Load",
+                    aggregation="mean",
+                    height=380,
                 )
 
                 if combined_load_chart is not None:
@@ -1460,36 +1663,31 @@ def display_route_profile(
                         combined_load_chart,
                         use_container_width=True,
                     )
+
+                    st.caption(
+                        alignment_caption(
+                            route_name=route_name,
+                            service_day=service_day,
+                            settings=load_alignment_settings,
+                        )
+                    )
                 else:
                     st.warning(
                         "No median passenger-load information "
                         "is available for the combined-direction chart."
                     )
 
-                st.caption(
-                    "Trip start time is used as an ordered descriptive "
-                    "category, so every bar position has equal spacing."
-                )
-
-            st.markdown(
-                "#### Individual Direction Charts"
-            )
+            st.markdown("#### Individual Direction Charts")
 
             for direction in directions:
                 direction_df = service_df[
-                    service_df["direction"]
-                    == direction
+                    service_df["direction"] == direction
                 ].copy()
 
-                st.markdown(
-                    f"#### Direction {direction}"
-                )
+                st.markdown(f"#### Direction {direction}")
 
                 average_direction_load = (
-                    direction_df[
-                        "median_passenger_load"
-                    ]
-                    .mean()
+                    direction_df["median_passenger_load"].mean()
                 )
 
                 st.metric(
@@ -1508,8 +1706,7 @@ def display_route_profile(
                         ],
                         as_index=False,
                         dropna=False,
-                    )
-                    ["median_passenger_load"]
+                    )["median_passenger_load"]
                     .mean()
                 )
 
@@ -1530,14 +1727,11 @@ def display_route_profile(
             # ON-TIME PERFORMANCE
             # ------------------------------------------------
 
-            st.markdown(
-                "### On-Time Performance"
-            )
+            st.markdown("### On-Time Performance")
 
             for direction in directions:
                 direction_df = service_df[
-                    service_df["direction"]
-                    == direction
+                    service_df["direction"] == direction
                 ].copy()
 
                 valid_otp = direction_df.dropna(
@@ -1549,9 +1743,7 @@ def display_route_profile(
                     how="all",
                 )
 
-                st.markdown(
-                    f"#### Direction {direction}"
-                )
+                st.markdown(f"#### Direction {direction}")
 
                 if valid_otp.empty:
                     st.warning(
@@ -1561,9 +1753,7 @@ def display_route_profile(
                     continue
 
                 st.altair_chart(
-                    otp_chart_for_direction(
-                        valid_otp
-                    ),
+                    otp_chart_for_direction(valid_otp),
                     use_container_width=True,
                 )
 
@@ -1591,9 +1781,7 @@ def display_route_profile(
                     "percent_late",
                 ]
 
-                detail_df = service_df[
-                    detail_columns
-                ].copy()
+                detail_df = service_df[detail_columns].copy()
 
                 detail_df = detail_df.sort_values(
                     [
@@ -1628,8 +1816,10 @@ def display_route_profile(
                     use_container_width=True,
                     hide_index=True,
                     column_config={
-                        "Total Boardings": st.column_config.NumberColumn(
-                            format="%.0f"
+                        "Total Boardings": (
+                            st.column_config.NumberColumn(
+                                format="%.0f"
+                            )
                         ),
                         "Average Daily Boardings": (
                             st.column_config.NumberColumn(
@@ -1641,14 +1831,20 @@ def display_route_profile(
                                 format="%.1f"
                             )
                         ),
-                        "% Early": st.column_config.NumberColumn(
-                            format="%.1f%%"
+                        "% Early": (
+                            st.column_config.NumberColumn(
+                                format="%.1f%%"
+                            )
                         ),
-                        "% On-Time": st.column_config.NumberColumn(
-                            format="%.1f%%"
+                        "% On-Time": (
+                            st.column_config.NumberColumn(
+                                format="%.1f%%"
+                            )
                         ),
-                        "% Late": st.column_config.NumberColumn(
-                            format="%.1f%%"
+                        "% Late": (
+                            st.column_config.NumberColumn(
+                                format="%.1f%%"
+                            )
                         ),
                     },
                 )
@@ -1680,9 +1876,7 @@ data/
 
 
 route_options = sorted(
-    spring_df[
-        "route_short_name"
-    ]
+    spring_df["route_short_name"]
     .dropna()
     .unique()
     .tolist(),
@@ -1707,8 +1901,7 @@ for route_tab, route_name in zip(
 ):
     with route_tab:
         route_df = spring_df[
-            spring_df["route_short_name"]
-            == route_name
+            spring_df["route_short_name"] == route_name
         ].copy()
 
         display_route_profile(
