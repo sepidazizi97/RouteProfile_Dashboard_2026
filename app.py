@@ -583,6 +583,28 @@ def actual_time_bar_chart(data, value_column, y_title, tooltip_title, aggregatio
     )
     grouped = grouped.dropna(subset=["trip_datetime"])
 
+    present_directions = grouped["direction"].dropna().unique().tolist()
+    direction_domain = [
+        direction
+        for direction in DIRECTION_COLORS
+        if direction in present_directions
+    ]
+    direction_domain.extend(
+        direction
+        for direction in present_directions
+        if direction not in direction_domain
+    )
+    direction_range = [
+        DIRECTION_COLORS.get(direction, "#6B7280")
+        for direction in direction_domain
+    ]
+
+    # Separate-direction charts already name the direction in the heading.
+    # Therefore, do not repeat a direction legend when only one direction
+    # is present. If this function is ever used with multiple directions,
+    # show only the directions that actually exist in the chart data.
+    direction_legend = None if len(direction_domain) <= 1 else alt.Legend(title="Direction")
+
     chart = (
         alt.Chart(grouped)
         .mark_bar(size=8, cornerRadiusTopLeft=2, cornerRadiusTopRight=2)
@@ -597,9 +619,10 @@ def actual_time_bar_chart(data, value_column, y_title, tooltip_title, aggregatio
             color=alt.Color(
                 "direction:N",
                 title="Direction",
+                legend=direction_legend,
                 scale=alt.Scale(
-                    domain=list(DIRECTION_COLORS.keys()),
-                    range=list(DIRECTION_COLORS.values()),
+                    domain=direction_domain,
+                    range=direction_range,
                 ),
             ),
             tooltip=[
