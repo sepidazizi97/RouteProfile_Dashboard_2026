@@ -1,6 +1,10 @@
 import os
 import re
+from io import BytesIO
 from pathlib import Path
+from urllib.parse import quote
+
+import requests
 
 import altair as alt
 import pandas as pd
@@ -118,36 +122,70 @@ st.markdown(
 
 
 # ==================================================
-# 4. LOAD DATA FROM THE GITHUB REPOSITORY
+# 4. LOAD THE LATEST DATA DIRECTLY FROM GITHUB
 # ==================================================
 
-BASE_DIR = Path(__file__).resolve().parent
-DATA_DIR = BASE_DIR / "data"
+GITHUB_OWNER = "sepidazizi97"
+GITHUB_REPOSITORY = "RouteProfile_Dashboard_2026"
+GITHUB_BRANCH = "main"
+GITHUB_RAW_BASE = (
+    f"https://raw.githubusercontent.com/{GITHUB_OWNER}/"
+    f"{GITHUB_REPOSITORY}/{GITHUB_BRANCH}"
+)
 
 SYSTEM_FILE_CANDIDATES = [
-    "Summary System(1).csv",
-    "Summary System.csv",
-    "SYSTEM_SUMMARY_SPRING_2026.csv",
+    "data/Summary System(1).csv",
+    "data/Summary System.csv",
+    "data/SYSTEM_SUMMARY_SPRING_2026.csv",
 ]
 
 TREND_FILE_CANDIDATES = [
-    "Ridership Trend from 2023 - Jul 20 2026(1).csv",
-    "Ridership Trend from 2023 - Jul 20 2026.csv",
-    "RIDERSHIP_TREND_FROM_2023.csv",
+    "data/Ridership Trend from 2023 - Jul 20 2026(1).csv",
+    "data/Ridership Trend from 2023 - Jul 20 2026.csv",
+    "data/RIDERSHIP_TREND_FROM_2023.csv",
+]
+
+ROUTE_PROFILE_FILE_CANDIDATES = [
+    "data/Route Profile.xlsx",
+    "Route Profile.xlsx",
 ]
 
 
-def find_data_file(candidates):
-    """Return the first matching file from the repository's data folder."""
-    for filename in candidates:
-        path = DATA_DIR / filename
-        if path.exists():
-            return path
+def github_raw_url(repository_path: str) -> str:
+    """Create a raw GitHub URL while safely encoding spaces and symbols."""
+    encoded_path = "/".join(quote(part) for part in repository_path.split("/"))
+    return f"{GITHUB_RAW_BASE}/{encoded_path}"
 
-    expected = "\n".join(f"- data/{name}" for name in candidates)
+
+def download_latest_github_file(candidates, refresh_number=0):
+    """Download the first existing candidate from the GitHub main branch."""
+    errors = []
+
+    for repository_path in candidates:
+        url = github_raw_url(repository_path)
+
+        try:
+            response = requests.get(
+                url,
+                timeout=45,
+                headers={
+                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                    "Pragma": "no-cache",
+                    "Expires": "0",
+                },
+                params={"refresh": refresh_number},
+            )
+
+            if response.status_code == 200:
+                return response.content, repository_path
+
+            errors.append(f"{repository_path}: HTTP {response.status_code}")
+        except requests.RequestException as error:
+            errors.append(f"{repository_path}: {error}")
+
     st.error(
-        "A required data file could not be found. Expected one of:\n"
-        f"{expected}"
+        "The latest data could not be downloaded from GitHub. Checked:\n"
+        + "\n".join(f"- {item}" for item in errors)
     )
     st.stop()
 
@@ -165,33 +203,49 @@ def standardize_column_names(df):
     return df
 
 
-@st.cache_data(show_spinner="Loading dashboard data...")
-def load_data(system_file_mtime, trend_file_mtime):
-    """
-    Load CSV files from the repository.
+@st.cache_data(ttl=60, show_spinner="Downloading the latest GitHub data...")
+def load_system_and_trend_data(refresh_number):
+    """Load the newest committed CSV files from GitHub."""
+    system_bytes, system_source = download_latest_github_file(
+        SYSTEM_FILE_CANDIDATES, refresh_number
+    )
+    trend_bytes, trend_source = download_latest_github_file(
+        TREND_FILE_CANDIDATES, refresh_number
+    )
 
-    The modification-time arguments make Streamlit invalidate the cache
-    whenever a committed CSV file changes.
-    """
-    system_path = find_data_file(SYSTEM_FILE_CANDIDATES)
-    trend_path = find_data_file(TREND_FILE_CANDIDATES)
-
-    system_df = pd.read_csv(system_path)
-    trend_df = pd.read_csv(trend_path)
+    system_df = pd.read_csv(BytesIO(system_bytes))
+    trend_df = pd.read_csv(BytesIO(trend_bytes))
 
     return (
         standardize_column_names(system_df),
         standardize_column_names(trend_df),
+        system_source,
+        trend_source,
     )
 
 
-system_path = find_data_file(SYSTEM_FILE_CANDIDATES)
-trend_path = find_data_file(TREND_FILE_CANDIDATES)
+if "github_refresh_number" not in st.session_state:
+    st.session_state.github_refresh_number = 0
 
-system_df, trend_df = load_data(
-    system_path.stat().st_mtime_ns,
-    trend_path.stat().st_mtime_ns,
-)
+refresh_col, source_col = st.columns([1, 4])
+with refresh_col:
+    if st.button("🔄 Refresh GitHub data", use_container_width=True):
+        st.session_state.github_refresh_number += 1
+        st.cache_data.clear()
+        st.rerun()
+
+with source_col:
+    st.caption(
+        "Data are loaded directly from the latest committed files on the "
+        "GitHub main branch. Use Refresh after uploading or replacing a file."
+    )
+
+(
+    system_df,
+    trend_df,
+    system_source_path,
+    trend_source_path,
+) = load_system_and_trend_data(st.session_state.github_refresh_number)
 
 
 # ==================================================
@@ -417,10 +471,6 @@ def section_header(title, description=None):
 # ============================================================
 
 APP_FOLDER = Path(__file__).resolve().parent
-DATA_FILE_CANDIDATES = [
-    APP_FOLDER / "data" / "Route Profile.xlsx",
-    APP_FOLDER / "Route Profile.xlsx",
-]
 
 DIRECTION_COLORS = {
     "E": "#2563EB",
@@ -450,16 +500,12 @@ SERVICE_DAY_ORDER = ["Weekday", "Saturday", "Sunday"]
 # ============================================================
 
 
-def locate_data_file() -> Path:
-    for candidate in DATA_FILE_CANDIDATES:
-        if candidate.exists():
-            return candidate
-
-    st.error(
-        "Route Profile.xlsx was not found. Place it either beside this app.py "
-        "file or inside a data folder."
+def locate_data_file():
+    """Return the latest Route Profile workbook bytes and GitHub path."""
+    return download_latest_github_file(
+        ROUTE_PROFILE_FILE_CANDIDATES,
+        st.session_state.github_refresh_number,
     )
-    st.stop()
 
 
 def normalize_route_name(value):
@@ -631,8 +677,8 @@ def chart_style(chart):
 # ============================================================
 
 
-@st.cache_data(ttl=3600)
-def load_paired_route_profiles(file_path: str):
+@st.cache_data(ttl=60, show_spinner="Downloading the latest Route Profile workbook...")
+def load_paired_route_profiles(file_bytes: bytes, refresh_number: int):
     """
     Read every route sheet from Route Profile.xlsx.
 
@@ -644,7 +690,7 @@ def load_paired_route_profiles(file_path: str):
     as an unmatched side of that pair rather than being dropped or re-paired.
     """
 
-    workbook = pd.ExcelFile(file_path)
+    workbook = pd.ExcelFile(BytesIO(file_bytes))
     paired_frames = []
 
     expected_columns = [
@@ -670,7 +716,7 @@ def load_paired_route_profiles(file_path: str):
         route_name = normalize_route_name(sheet_name)
 
         sheet_df = pd.read_excel(
-            file_path,
+            BytesIO(file_bytes),
             sheet_name=sheet_name,
             usecols="A:P",
             dtype=object,
@@ -831,10 +877,13 @@ def load_paired_route_profiles(file_path: str):
     return paired_df, long_df
 
 
-DATA_FILE = locate_data_file()
+ROUTE_PROFILE_BYTES, ROUTE_PROFILE_SOURCE = locate_data_file()
 
 try:
-    paired_df, trip_df = load_paired_route_profiles(str(DATA_FILE))
+    paired_df, trip_df = load_paired_route_profiles(
+        ROUTE_PROFILE_BYTES,
+        st.session_state.github_refresh_number,
+    )
 except Exception as error:
     st.error("The paired Route Profile workbook could not be loaded.")
     st.exception(error)
@@ -2298,7 +2347,7 @@ with tab3:
         )
 
         st.caption(
-            f"{len(route_options)} route sheets loaded from {DATA_FILE.name}. "
+            f"{len(route_options)} route sheets loaded from {ROUTE_PROFILE_SOURCE}. "
             "Trip matching comes directly from the spreadsheet rows."
         )
 
@@ -2323,7 +2372,6 @@ with tab3:
 st.divider()
 
 st.caption(
-    "Data sources: data/Summary System(1).csv and "
-    "data/Ridership Trend from 2023 - Jul 20 2026(1).csv, and "
-    "data/Route Profile.xlsx • Ben Franklin Transit"
+    f"Latest GitHub sources: {system_source_path}, {trend_source_path}, and "
+    f"{ROUTE_PROFILE_SOURCE} • Branch: {GITHUB_BRANCH} • Ben Franklin Transit"
 )
