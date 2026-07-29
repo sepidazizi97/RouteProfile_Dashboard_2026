@@ -1,10 +1,6 @@
 import os
 import re
-from io import BytesIO
 from pathlib import Path
-from urllib.parse import quote
-
-import requests
 
 import altair as alt
 import pandas as pd
@@ -520,11 +516,8 @@ SERVICE_DAY_ORDER = ["Weekday", "Saturday", "Sunday"]
 
 
 def locate_data_file():
-    """Return the latest Route Profile workbook bytes and GitHub path."""
-    return download_latest_github_file(
-        ROUTE_PROFILE_FILE_CANDIDATES,
-        st.session_state.github_refresh_number,
-    )
+    """Return the locally deployed Route Profile workbook path."""
+    return ROUTE_PROFILE_FILE_PATH
 
 
 def normalize_route_name(value):
@@ -710,8 +703,11 @@ def chart_style(chart):
 # ============================================================
 
 
-@st.cache_data(ttl=60, show_spinner="Downloading the latest Route Profile workbook...")
-def load_paired_route_profiles(file_bytes: bytes, refresh_number: int):
+@st.cache_data(show_spinner="Loading Route Profile data...")
+def load_paired_route_profiles(
+    file_path: str,
+    file_modified_time: int,
+):
     """
     Read every route sheet from Route Profile.xlsx.
 
@@ -723,7 +719,7 @@ def load_paired_route_profiles(file_bytes: bytes, refresh_number: int):
     as an unmatched side of that pair rather than being dropped or re-paired.
     """
 
-    workbook = pd.ExcelFile(BytesIO(file_bytes))
+    workbook = pd.ExcelFile(file_path)
     paired_frames = []
 
     expected_columns = [
@@ -752,7 +748,7 @@ def load_paired_route_profiles(file_bytes: bytes, refresh_number: int):
         # from crashing when an older or single-direction sheet has fewer than
         # 16 physically populated columns.
         sheet_df = pd.read_excel(
-            BytesIO(file_bytes),
+            file_path,
             sheet_name=sheet_name,
             dtype=object,
         )
@@ -915,12 +911,12 @@ def load_paired_route_profiles(file_bytes: bytes, refresh_number: int):
     return paired_df, long_df
 
 
-ROUTE_PROFILE_BYTES, ROUTE_PROFILE_SOURCE = locate_data_file()
+ROUTE_PROFILE_PATH = locate_data_file()
 
 try:
     paired_df, trip_df = load_paired_route_profiles(
-        ROUTE_PROFILE_BYTES,
-        st.session_state.github_refresh_number,
+        str(ROUTE_PROFILE_PATH),
+        ROUTE_PROFILE_PATH.stat().st_mtime_ns,
     )
 except Exception as error:
     st.error("The paired Route Profile workbook could not be loaded.")
@@ -2426,6 +2422,7 @@ with tab3:
 st.divider()
 
 st.caption(
-    f"Latest GitHub sources: {system_source_path}, {trend_source_path}, and "
-    f"{ROUTE_PROFILE_SOURCE} • Branch: {GITHUB_BRANCH} • Ben Franklin Transit"
+    f"Data sources: {system_source_path}, {trend_source_path}, and "
+    f"{ROUTE_PROFILE_SOURCE} • Loaded from the deployed repository • "
+    "Ben Franklin Transit"
 )
