@@ -2422,7 +2422,7 @@ with tab3:
 st.divider()
 
 st.caption(
-    f"Data sources: {system_source_path}, {trend_source_path}, and "
-    f"{ROUTE_PROFILE_SOURCE} • Loaded from the deployed repository • "
-    "Ben Franklin Transit"
+    "Ben Franklin Transit • Spring 2026 Performance Dashboard | "
+    "Data loaded from the deployed repository | "
+    "Last deployed version"
 )
