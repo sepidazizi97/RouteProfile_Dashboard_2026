@@ -16,7 +16,7 @@ import streamlit as st
 # ==================================================
 
 st.set_page_config(
-    page_title="BFT Spring (March-April-May) 2026 Performance Dashboard",
+    page_title="BFT Spring 2026 Performance Dashboard",
     layout="wide",
 )
 
@@ -108,7 +108,7 @@ st.markdown(
 )
 
 st.markdown(
-    '<div class="main-title">BFT Spring 2026 Performance Dashboard</div>',
+    '<div class="main-title">BFT Spring (March-April-May) 2026 Performance Dashboard</div>',
     unsafe_allow_html=True,
 )
 
