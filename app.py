@@ -16,7 +16,7 @@ import streamlit as st
 # ==================================================
 
 st.set_page_config(
-    page_title="BFT Spring 2026 Performance Dashboard",
+    page_title="BFT Spring (March-April-May) 2026 Performance Dashboard",
     layout="wide",
 )
 
@@ -31,6 +31,7 @@ BFT_LIGHT_BLUE = "#60A5FA"
 BFT_GOLD = "#E3A008"
 
 ON_TIME_GREEN = "#2E8B57"
+EARLY_GOLD = "#F6C85F"
 LATE_RED = "#D64545"
 
 WEEKDAY_BLUE = "#2563EB"
@@ -321,6 +322,7 @@ def prepare_system_summary(df):
         "totalaveragedailysundayborading",
         "totalaveragedailysundayboarding",
         "avgmedianload",
+        "avgearly",
         "avgontime",
         "avglate",
         "totalseasonalrevenuemiles",
@@ -357,6 +359,16 @@ def prepare_system_summary(df):
         if new_name not in df.columns and old_name in df.columns:
             df[new_name] = df[old_name]
 
+    # Some system-summary files omit Avg Early. When that happens,
+    # calculate it from the remaining OTP components.
+    if "avgearly" not in df.columns:
+        if "avgontime" in df.columns and "avglate" in df.columns:
+            df["avgearly"] = (
+                100 - df["avgontime"].fillna(0) - df["avglate"].fillna(0)
+            ).clip(lower=0, upper=100)
+        else:
+            df["avgearly"] = pd.NA
+
     df["route_sort"] = create_route_sort(df["routes"])
 
     return (
@@ -388,6 +400,12 @@ def prepare_ridership_trend(df):
     df["yearmonth"] = pd.to_datetime(df["yearmonth"], errors="coerce")
     df["totalfarecounts"] = clean_numeric(df["totalfarecounts"])
     df["route_sort"] = create_route_sort(df["route"])
+
+    # July 2026 is a partial month in the source file, so exclude it from
+    # the trend charts, metrics, annual totals, and detail table.
+    df = df.loc[
+        ~((df["yearmonth"].dt.year == 2026) & (df["yearmonth"].dt.month == 7))
+    ].copy()
 
     return (
         df.dropna(subset=["yearmonth"])
@@ -639,13 +657,27 @@ def minutes_to_label(value):
 
 
 def paired_time_label(row):
-    times = [row.get("trip_1_minutes"), row.get("trip_2_minutes")]
-    valid_times = [value for value in times if pd.notna(value)]
+    """
+    Use the outbound trip start time as the pair display time.
 
-    if not valid_times:
-        return f"Pair {int(row['pair_number'])}"
+    The workbook stores the outbound trip in Trip 1. Trip 1 is often
+    westbound, but it can be another direction depending on the route.
+    When Trip 1 is blank, use Trip 2 as a fallback.
 
-    return minutes_to_label(sum(valid_times) / len(valid_times))
+    The workbook row order remains authoritative. This is important for
+    schedule quirks on Route 1 Weekday/Saturday and Route 123 Sunday, where
+    a later clock time can intentionally appear before the following pair.
+    """
+    outbound_minutes = row.get("trip_1_minutes")
+    fallback_minutes = row.get("trip_2_minutes")
+
+    if pd.notna(outbound_minutes):
+        return minutes_to_label(outbound_minutes)
+
+    if pd.notna(fallback_minutes):
+        return minutes_to_label(fallback_minutes)
+
+    return f"Pair {int(row['pair_number'])}"
 
 
 def route_section_header(text):
@@ -715,19 +747,24 @@ def load_paired_route_profiles(file_bytes: bytes, refresh_number: int):
     for sheet_name in workbook.sheet_names:
         route_name = normalize_route_name(sheet_name)
 
+        # Read the worksheet first without forcing A:P. This prevents pandas
+        # from crashing when an older or single-direction sheet has fewer than
+        # 16 physically populated columns.
         sheet_df = pd.read_excel(
             BytesIO(file_bytes),
             sheet_name=sheet_name,
-            usecols="A:P",
             dtype=object,
         )
 
-        # Use position rather than original spelling so small Excel-header
-        # differences do not break the dashboard.
-        if sheet_df.shape[1] < 16:
+        if sheet_df.empty or sheet_df.shape[1] < 2:
             continue
 
+        # Keep the paired A:P structure. Missing columns are padded with blanks
+        # so a one-sided route remains usable rather than being discarded.
         sheet_df = sheet_df.iloc[:, :16].copy()
+        while sheet_df.shape[1] < 16:
+            sheet_df[f"__blank_{sheet_df.shape[1] + 1}"] = pd.NA
+
         sheet_df.columns = expected_columns
 
         # Remove rows where neither side contains a trip.
@@ -1131,15 +1168,17 @@ def create_route_profile(route_pairs, route_trips, route_name):
     total_average_daily_boardings = route_trips["average_daily_boardings"].sum()
     total_fare_counts = route_trips["total_fare_counts"].sum()
     average_load = route_trips["median_passenger_load"].mean()
+    average_early = route_trips["percent_early"].mean()
     average_otp = route_trips["percent_on_time"].mean()
     average_late = route_trips["percent_late"].mean()
 
-    m1, m2, m3, m4, m5 = st.columns(5)
+    m1, m2, m3, m4, m5, m6 = st.columns(6)
     m1.metric("Total Avg. Daily Boardings", f"{total_average_daily_boardings:,.1f}")
     m2.metric("Total Fare Counts", f"{total_fare_counts:,.0f}")
     m3.metric("Avg. Median Load", f"{average_load:.1f}")
-    m4.metric("Avg. On-Time", f"{average_otp:.1f}%")
-    m5.metric("Avg. Late", f"{average_late:.1f}%")
+    m4.metric("Avg. Early", f"{average_early:.1f}%")
+    m5.metric("Avg. On-Time", f"{average_otp:.1f}%")
+    m6.metric("Avg. Late", f"{average_late:.1f}%")
 
     st.divider()
 
@@ -1160,9 +1199,9 @@ def create_route_profile(route_pairs, route_trips, route_name):
 
             route_section_header(f"{service_day} Service")
             st.caption(
-                "Each spreadsheet row is one matched pair. Trip 1 and Trip 2 are "
-                "shown beside each other. A missing bar means that the opposite "
-                "trip cell was blank and no corresponding trip exists."
+                "Each spreadsheet row is one matched pair and workbook row order is preserved. "
+                "Pair Display Time uses the outbound Trip 1 start time, with Trip 2 used only "
+                "when Trip 1 is blank. A missing bar means no corresponding trip exists."
             )
 
             # ------------------------------------------------
@@ -1360,6 +1399,13 @@ with tab1:
     boardings_weight = system_df["totalboarding"].fillna(0)
     total_weight = boardings_weight.sum()
 
+    weighted_early = (
+        (system_df["avgearly"].fillna(0) * boardings_weight).sum()
+        / total_weight
+        if total_weight > 0
+        else 0
+    )
+
     weighted_otp = (
         (system_df["avgontime"].fillna(0) * boardings_weight).sum()
         / total_weight
@@ -1374,20 +1420,21 @@ with tab1:
         else 0
     )
 
-    k1, k2, k3, k4 = st.columns(4)
+    k1, k2, k3, k4, k5 = st.columns(5)
     k1.metric("Total Spring Boardings", f"{total_boardings:,.0f}")
     k2.metric(
         "Total Avg Daily Boardings",
         f"{total_avg_daily_boardings:,.1f}",
     )
-    k3.metric("System On-Time", f"{weighted_otp:.1f}%")
-    k4.metric("System Late", f"{weighted_late:.1f}%")
+    k3.metric("System Early", f"{weighted_early:.1f}%")
+    k4.metric("System On-Time", f"{weighted_otp:.1f}%")
+    k5.metric("System Late", f"{weighted_late:.1f}%")
 
-    k5, k6, k7, k8 = st.columns(4)
-    k5.metric("Seasonal Revenue Miles", f"{total_revenue_miles:,.0f}")
-    k6.metric("Seasonal Revenue Hours", f"{total_revenue_hours:,.1f}")
-    k7.metric("Total Trips", f"{total_trips:,.0f}")
-    k8.metric(
+    s1, s2, s3, s4 = st.columns(4)
+    s1.metric("Seasonal Revenue Miles", f"{total_revenue_miles:,.0f}")
+    s2.metric("Seasonal Revenue Hours", f"{total_revenue_hours:,.1f}")
+    s3.metric("Total Trips", f"{total_trips:,.0f}")
+    s4.metric(
         "Boardings per Revenue Hour",
         f"{overall_productivity:.2f}",
     )
@@ -1650,11 +1697,11 @@ with tab1:
 
     section_header(
         "On-Time Performance",
-        "On-Time and Late percentages are displayed in the same stacked column for each route.",
+        "Early, On-Time, and Late percentages are displayed in the same stacked column for each route.",
     )
 
     performance_data = system_df[
-        ["routes", "avgontime", "avglate"]
+        ["routes", "avgearly", "avgontime", "avglate"]
     ].melt(
         id_vars="routes",
         var_name="performance_type",
@@ -1664,6 +1711,7 @@ with tab1:
     performance_data["performance_type"] = (
         performance_data["performance_type"].replace(
             {
+                "avgearly": "Early",
                 "avgontime": "On-Time",
                 "avglate": "Late",
             }
@@ -1685,10 +1733,10 @@ with tab1:
             color=alt.Color(
                 "performance_type:N",
                 title="Performance",
-                sort=["On-Time", "Late"],
+                sort=["Early", "On-Time", "Late"],
                 scale=alt.Scale(
-                    domain=["On-Time", "Late"],
-                    range=[ON_TIME_GREEN, LATE_RED],
+                    domain=["Early", "On-Time", "Late"],
+                    range=[EARLY_GOLD, ON_TIME_GREEN, LATE_RED],
                 ),
             ),
             order=alt.Order("performance_type:N", sort="descending"),
@@ -1707,7 +1755,7 @@ with tab1:
         )
         .properties(
             height=430,
-            title="Average On-Time and Late Performance by Route",
+            title="Average Early, On-Time, and Late Performance by Route",
         )
     )
 
@@ -2084,6 +2132,7 @@ with tab1:
         "totalaveragedailysaturdayboarding": "Avg Daily Boardings – Saturday",
         "totalaveragedailysundayboarding": "Avg Daily Boardings – Sunday",
         "avgmedianload": "Avg Median Load",
+        "avgearly": "Avg Early (%)",
         "avgontime": "Avg On-Time (%)",
         "avglate": "Avg Late (%)",
         "totalseasonalrevenuemiles": "Total Seasonal Revenue Miles",
@@ -2117,6 +2166,10 @@ with tab1:
         hide_index=True,
         column_config={
             "Route": st.column_config.TextColumn("Route", pinned=True),
+            "Avg Early (%)": st.column_config.NumberColumn(
+                "Avg Early (%)",
+                format="%.1f%%",
+            ),
             "Avg On-Time (%)": st.column_config.NumberColumn(
                 "Avg On-Time (%)",
                 format="%.1f%%",
