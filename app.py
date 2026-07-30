@@ -2421,8 +2421,18 @@ with tab3:
 
 st.divider()
 
-st.caption(
-    f"Data sources: {system_source_path}, {trend_source_path}, and "
-    f"{ROUTE_PROFILE_SOURCE} • Loaded from the deployed repository • "
-    "Ben Franklin Transit"
-)
+st.markdown(
+    f"""
+    <div style="
+        text-align:center;
+        font-size:13px;
+        color:#6B7280;
+        line-height:1.5;
+    ">
+        <b>Ben Franklin Transit</b><br>
+        Spring 2026 Performance Dashboard<br>
+        Data Source: Internal Deployed Repository
+    </div>
+    """,
+    unsafe_allow_html=True,
+
