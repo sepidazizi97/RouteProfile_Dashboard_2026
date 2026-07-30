@@ -1,10 +1,6 @@
 import os
 import re
-from io import BytesIO
 from pathlib import Path
-from urllib.parse import quote
-
-import requests
 
 import altair as alt
 import pandas as pd
@@ -108,7 +104,7 @@ st.markdown(
 )
 
 st.markdown(
-    '<div class="main-title">BFT Spring 2026 Performance Dashboard</div>',
+    '<div class="main-title">BFT Spring (March-April-May) 2026 Performance Dashboard</div>',
     unsafe_allow_html=True,
 )
 
@@ -123,70 +119,54 @@ st.markdown(
 
 
 # ==================================================
-# 4. LOAD THE LATEST DATA DIRECTLY FROM GITHUB
+# 4. LOAD DATA FROM THE DEPLOYED REPOSITORY
 # ==================================================
 
-GITHUB_OWNER = "sepidazizi97"
-GITHUB_REPOSITORY = "RouteProfile_Dashboard_2026"
-GITHUB_BRANCH = "main"
-GITHUB_RAW_BASE = (
-    f"https://raw.githubusercontent.com/{GITHUB_OWNER}/"
-    f"{GITHUB_REPOSITORY}/{GITHUB_BRANCH}"
-)
+APP_FOLDER = Path(__file__).resolve().parent
 
 SYSTEM_FILE_CANDIDATES = [
-    "data/Summary System(1).csv",
-    "data/Summary System.csv",
-    "data/SYSTEM_SUMMARY_SPRING_2026.csv",
+    APP_FOLDER / "data" / "Summary System(1).csv",
+    APP_FOLDER / "data" / "Summary System.csv",
+    APP_FOLDER / "data" / "SYSTEM_SUMMARY_SPRING_2026.csv",
+    APP_FOLDER / "Summary System(1).csv",
+    APP_FOLDER / "Summary System.csv",
+    APP_FOLDER / "SYSTEM_SUMMARY_SPRING_2026.csv",
 ]
 
 TREND_FILE_CANDIDATES = [
-    "data/Ridership Trend from 2023 - Jul 20 2026(1).csv",
-    "data/Ridership Trend from 2023 - Jul 20 2026.csv",
-    "data/RIDERSHIP_TREND_FROM_2023.csv",
+    APP_FOLDER / "data" / "Ridership Trend from 2023 - Jul 20 2026(1).csv",
+    APP_FOLDER / "data" / "Ridership Trend from 2023 - Jul 20 2026.csv",
+    APP_FOLDER / "data" / "RIDERSHIP_TREND_FROM_2023.csv",
+    APP_FOLDER / "Ridership Trend from 2023 - Jul 20 2026(1).csv",
+    APP_FOLDER / "Ridership Trend from 2023 - Jul 20 2026.csv",
+    APP_FOLDER / "RIDERSHIP_TREND_FROM_2023.csv",
 ]
 
 ROUTE_PROFILE_FILE_CANDIDATES = [
-    "data/Route Profile.xlsx",
-    "Route Profile.xlsx",
+    APP_FOLDER / "data" / "Route Profile.xlsx",
+    APP_FOLDER / "Route Profile.xlsx",
 ]
 
 
-def github_raw_url(repository_path: str) -> str:
-    """Create a raw GitHub URL while safely encoding spaces and symbols."""
-    encoded_path = "/".join(quote(part) for part in repository_path.split("/"))
-    return f"{GITHUB_RAW_BASE}/{encoded_path}"
+def find_existing_file(candidates, file_description):
+    """
+    Return the first existing local file from the deployed repository.
 
+    Streamlit Cloud automatically clones the GitHub repository, so reading
+    these local files is much faster than downloading them from GitHub.
+    """
+    for file_path in candidates:
+        if file_path.exists() and file_path.is_file():
+            return file_path
 
-def download_latest_github_file(candidates, refresh_number=0):
-    """Download the first existing candidate from the GitHub main branch."""
-    errors = []
-
-    for repository_path in candidates:
-        url = github_raw_url(repository_path)
-
-        try:
-            response = requests.get(
-                url,
-                timeout=45,
-                headers={
-                    "Cache-Control": "no-cache, no-store, must-revalidate",
-                    "Pragma": "no-cache",
-                    "Expires": "0",
-                },
-                params={"refresh": refresh_number},
-            )
-
-            if response.status_code == 200:
-                return response.content, repository_path
-
-            errors.append(f"{repository_path}: HTTP {response.status_code}")
-        except requests.RequestException as error:
-            errors.append(f"{repository_path}: {error}")
+    checked_paths = "\n".join(
+        f"- {path.relative_to(APP_FOLDER)}"
+        for path in candidates
+    )
 
     st.error(
-        "The latest data could not be downloaded from GitHub. Checked:\n"
-        + "\n".join(f"- {item}" for item in errors)
+        f"The {file_description} file could not be found in the deployed "
+        f"repository. Checked:\n{checked_paths}"
     )
     st.stop()
 
@@ -204,49 +184,66 @@ def standardize_column_names(df):
     return df
 
 
-@st.cache_data(ttl=60, show_spinner="Downloading the latest GitHub data...")
-def load_system_and_trend_data(refresh_number):
-    """Load the newest committed CSV files from GitHub."""
-    system_bytes, system_source = download_latest_github_file(
-        SYSTEM_FILE_CANDIDATES, refresh_number
-    )
-    trend_bytes, trend_source = download_latest_github_file(
-        TREND_FILE_CANDIDATES, refresh_number
-    )
+@st.cache_data(show_spinner="Loading dashboard data...")
+def load_system_and_trend_data(
+    system_file_path,
+    system_modified_time,
+    trend_file_path,
+    trend_modified_time,
+):
+    """
+    Load CSV files from the deployed repository.
 
-    system_df = pd.read_csv(BytesIO(system_bytes))
-    trend_df = pd.read_csv(BytesIO(trend_bytes))
+    The modification times are included in the cache key. Therefore, when
+    Streamlit redeploys after a new GitHub commit, the changed files receive
+    a new cache entry automatically.
+    """
+    system_df = pd.read_csv(system_file_path)
+    trend_df = pd.read_csv(trend_file_path)
 
     return (
         standardize_column_names(system_df),
         standardize_column_names(trend_df),
-        system_source,
-        trend_source,
     )
 
 
-if "github_refresh_number" not in st.session_state:
-    st.session_state.github_refresh_number = 0
+SYSTEM_FILE_PATH = find_existing_file(
+    SYSTEM_FILE_CANDIDATES,
+    "system-summary",
+)
 
-refresh_col, source_col = st.columns([1, 4])
-with refresh_col:
-    if st.button("🔄 Refresh GitHub data", use_container_width=True):
-        st.session_state.github_refresh_number += 1
-        st.cache_data.clear()
-        st.rerun()
+TREND_FILE_PATH = find_existing_file(
+    TREND_FILE_CANDIDATES,
+    "ridership-trend",
+)
 
-with source_col:
-    st.caption(
-        "Data are loaded directly from the latest committed files on the "
-        "GitHub main branch. Use Refresh after uploading or replacing a file."
-    )
+ROUTE_PROFILE_FILE_PATH = find_existing_file(
+    ROUTE_PROFILE_FILE_CANDIDATES,
+    "Route Profile workbook",
+)
+
 
 (
     system_df,
     trend_df,
-    system_source_path,
-    trend_source_path,
-) = load_system_and_trend_data(st.session_state.github_refresh_number)
+) = load_system_and_trend_data(
+    str(SYSTEM_FILE_PATH),
+    SYSTEM_FILE_PATH.stat().st_mtime_ns,
+    str(TREND_FILE_PATH),
+    TREND_FILE_PATH.stat().st_mtime_ns,
+)
+
+system_source_path = str(
+    SYSTEM_FILE_PATH.relative_to(APP_FOLDER)
+)
+
+trend_source_path = str(
+    TREND_FILE_PATH.relative_to(APP_FOLDER)
+)
+
+ROUTE_PROFILE_SOURCE = str(
+    ROUTE_PROFILE_FILE_PATH.relative_to(APP_FOLDER)
+)
 
 
 # ==================================================
@@ -519,11 +516,8 @@ SERVICE_DAY_ORDER = ["Weekday", "Saturday", "Sunday"]
 
 
 def locate_data_file():
-    """Return the latest Route Profile workbook bytes and GitHub path."""
-    return download_latest_github_file(
-        ROUTE_PROFILE_FILE_CANDIDATES,
-        st.session_state.github_refresh_number,
-    )
+    """Return the locally deployed Route Profile workbook path."""
+    return ROUTE_PROFILE_FILE_PATH
 
 
 def normalize_route_name(value):
@@ -709,8 +703,11 @@ def chart_style(chart):
 # ============================================================
 
 
-@st.cache_data(ttl=60, show_spinner="Downloading the latest Route Profile workbook...")
-def load_paired_route_profiles(file_bytes: bytes, refresh_number: int):
+@st.cache_data(show_spinner="Loading Route Profile data...")
+def load_paired_route_profiles(
+    file_path: str,
+    file_modified_time: int,
+):
     """
     Read every route sheet from Route Profile.xlsx.
 
@@ -722,7 +719,7 @@ def load_paired_route_profiles(file_bytes: bytes, refresh_number: int):
     as an unmatched side of that pair rather than being dropped or re-paired.
     """
 
-    workbook = pd.ExcelFile(BytesIO(file_bytes))
+    workbook = pd.ExcelFile(file_path)
     paired_frames = []
 
     expected_columns = [
@@ -751,7 +748,7 @@ def load_paired_route_profiles(file_bytes: bytes, refresh_number: int):
         # from crashing when an older or single-direction sheet has fewer than
         # 16 physically populated columns.
         sheet_df = pd.read_excel(
-            BytesIO(file_bytes),
+            file_path,
             sheet_name=sheet_name,
             dtype=object,
         )
@@ -914,12 +911,12 @@ def load_paired_route_profiles(file_bytes: bytes, refresh_number: int):
     return paired_df, long_df
 
 
-ROUTE_PROFILE_BYTES, ROUTE_PROFILE_SOURCE = locate_data_file()
+ROUTE_PROFILE_PATH = locate_data_file()
 
 try:
     paired_df, trip_df = load_paired_route_profiles(
-        ROUTE_PROFILE_BYTES,
-        st.session_state.github_refresh_number,
+        str(ROUTE_PROFILE_PATH),
+        ROUTE_PROFILE_PATH.stat().st_mtime_ns,
     )
 except Exception as error:
     st.error("The paired Route Profile workbook could not be loaded.")
@@ -2425,6 +2422,7 @@ with tab3:
 st.divider()
 
 st.caption(
-    f"Latest GitHub sources: {system_source_path}, {trend_source_path}, and "
-    f"{ROUTE_PROFILE_SOURCE} • Branch: {GITHUB_BRANCH} • Ben Franklin Transit"
+    f"Data sources: {system_source_path}, {trend_source_path}, and "
+    f"{ROUTE_PROFILE_SOURCE} • Loaded from the deployed repository • "
+    "Ben Franklin Transit"
 )
