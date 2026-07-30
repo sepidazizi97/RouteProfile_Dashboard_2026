@@ -2421,18 +2421,9 @@ with tab3:
 
 st.divider()
 
-st.markdown(
-    f"""
-    <div style="
-        text-align:center;
-        font-size:13px;
-        color:#6B7280;
-        line-height:1.5;
-    ">
-        <b>Ben Franklin Transit</b><br>
-        Spring 2026 Performance Dashboard<br>
-        Data Source: Internal Deployed Repository
-    </div>
-    """,
-    unsafe_allow_html=True,
+st.caption(
+    "Ben Franklin Transit • Spring 2026 Performance Dashboard | "
+    "Data loaded from the deployed repository | "
+    "Last deployed version"
+)
 
