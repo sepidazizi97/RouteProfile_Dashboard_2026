@@ -125,9 +125,11 @@ st.markdown(
 APP_FOLDER = Path(__file__).resolve().parent
 
 SYSTEM_FILE_CANDIDATES = [
+    APP_FOLDER / "data" / "Summary System(6).csv",
     APP_FOLDER / "data" / "Summary System(1).csv",
     APP_FOLDER / "data" / "Summary System.csv",
     APP_FOLDER / "data" / "SYSTEM_SUMMARY_SPRING_2026.csv",
+    APP_FOLDER / "Summary System(6).csv",
     APP_FOLDER / "Summary System(1).csv",
     APP_FOLDER / "Summary System.csv",
     APP_FOLDER / "SYSTEM_SUMMARY_SPRING_2026.csv",
@@ -182,6 +184,7 @@ def standardize_column_names(df):
         .str.lower()
         .str.replace(" ", "", regex=False)
         .str.replace("_", "", regex=False)
+        .str.replace("-", "", regex=False)
     )
     return df
 
@@ -321,14 +324,18 @@ def prepare_system_summary(df):
         "totalaveragedailysundayborading",
         "totalaveragedailysundayboarding",
         "avgmedianload",
-        "avgearly",
-        "avgontime",
-        "avglate",
+        "avgearlyarrival",
+        "avgontimearrival",
+        "avglatearrival",
+        "avgearlydeparture",
+        "avgontimedeparture",
+        "avglatedeparture",
         "totalseasonalrevenuemiles",
         "averagedailyrevenuemilesweekday",
         "averagedailyrevenuemilessaturday",
         "averagedailyrevenuemilessunday",
         "totaltripcount",
+        "passengerspertrip",
         "totalseasonalrevenuehours",
         "averagedailyrevenuehoursweekday",
         "averagedailyrevenuehourssaturday",
@@ -337,6 +344,10 @@ def prepare_system_summary(df):
         "weekdayridershipperrevhour",
         "saturdayridershipperrevhour",
         "sundayridershipperrevhour",
+        "costperpassenger",
+        "costperpassengerweekday",
+        "costperpassengersaturday",
+        "costperpassengersunday",
     ]
 
     df["routes"] = clean_route_labels(df["routes"])
@@ -358,15 +369,19 @@ def prepare_system_summary(df):
         if new_name not in df.columns and old_name in df.columns:
             df[new_name] = df[old_name]
 
-    # Some system-summary files omit Avg Early. When that happens,
-    # calculate it from the remaining OTP components.
-    if "avgearly" not in df.columns:
-        if "avgontime" in df.columns and "avglate" in df.columns:
-            df["avgearly"] = (
-                100 - df["avgontime"].fillna(0) - df["avglate"].fillna(0)
-            ).clip(lower=0, upper=100)
-        else:
-            df["avgearly"] = pd.NA
+    # Calculate a missing Early component independently for Arrival and
+    # Departure OTP when On-Time and Late are available.
+    for perspective in ("arrival", "departure"):
+        early = f"avgearly{perspective}"
+        on_time = f"avgontime{perspective}"
+        late = f"avglate{perspective}"
+        if early not in df.columns:
+            if on_time in df.columns and late in df.columns:
+                df[early] = (
+                    100 - df[on_time].fillna(0) - df[late].fillna(0)
+                ).clip(lower=0, upper=100)
+            else:
+                df[early] = pd.NA
 
     df["route_sort"] = create_route_sort(df["routes"])
 
@@ -1466,6 +1481,9 @@ with tab1:
     total_revenue_miles = system_df["totalseasonalrevenuemiles"].sum()
     total_revenue_hours = system_df["totalseasonalrevenuehours"].sum()
     total_trips = system_df["totaltripcount"].sum()
+    overall_passengers_per_trip = (
+        total_boardings / total_trips if total_trips > 0 else 0
+    )
 
     overall_productivity = (
         total_boardings / total_revenue_hours
@@ -1476,45 +1494,49 @@ with tab1:
     boardings_weight = system_df["totalboarding"].fillna(0)
     total_weight = boardings_weight.sum()
 
-    weighted_early = (
-        (system_df["avgearly"].fillna(0) * boardings_weight).sum()
-        / total_weight
-        if total_weight > 0
-        else 0
-    )
+    def weighted_system_metric(column):
+        valid = system_df[column].notna() & (boardings_weight > 0)
+        valid_weight = boardings_weight[valid].sum()
+        if valid_weight <= 0:
+            return 0
+        return (
+            system_df.loc[valid, column] * boardings_weight.loc[valid]
+        ).sum() / valid_weight
 
-    weighted_otp = (
-        (system_df["avgontime"].fillna(0) * boardings_weight).sum()
-        / total_weight
-        if total_weight > 0
-        else 0
-    )
+    arrival_early = weighted_system_metric("avgearlyarrival")
+    arrival_otp = weighted_system_metric("avgontimearrival")
+    arrival_late = weighted_system_metric("avglatearrival")
+    departure_early = weighted_system_metric("avgearlydeparture")
+    departure_otp = weighted_system_metric("avgontimedeparture")
+    departure_late = weighted_system_metric("avglatedeparture")
+    overall_cost_per_passenger = weighted_system_metric("costperpassenger")
 
-    weighted_late = (
-        (system_df["avglate"].fillna(0) * boardings_weight).sum()
-        / total_weight
-        if total_weight > 0
-        else 0
-    )
-
-    k1, k2, k3, k4, k5 = st.columns(5)
+    k1, k2, k3, k4 = st.columns(4)
     k1.metric("Total Spring Boardings", f"{total_boardings:,.0f}")
     k2.metric(
         "Total Avg Daily Boardings",
         f"{total_avg_daily_boardings:,.1f}",
     )
-    k3.metric("System Early", f"{weighted_early:.1f}%")
-    k4.metric("System On-Time", f"{weighted_otp:.1f}%")
-    k5.metric("System Late", f"{weighted_late:.1f}%")
+    k3.metric("Passengers per Trip", f"{overall_passengers_per_trip:.1f}")
+    k4.metric("Boardings per Revenue Hour", f"{overall_productivity:.2f}")
+
+    st.markdown("##### Arrival OTP")
+    a1, a2, a3 = st.columns(3)
+    a1.metric("System Early Arrival", f"{arrival_early:.1f}%")
+    a2.metric("System On-Time Arrival", f"{arrival_otp:.1f}%")
+    a3.metric("System Late Arrival", f"{arrival_late:.1f}%")
+
+    st.markdown("##### Departure OTP")
+    d1, d2, d3 = st.columns(3)
+    d1.metric("System Early Departure", f"{departure_early:.1f}%")
+    d2.metric("System On-Time Departure", f"{departure_otp:.1f}%")
+    d3.metric("System Late Departure", f"{departure_late:.1f}%")
 
     s1, s2, s3, s4 = st.columns(4)
     s1.metric("Seasonal Revenue Miles", f"{total_revenue_miles:,.0f}")
     s2.metric("Seasonal Revenue Hours", f"{total_revenue_hours:,.1f}")
     s3.metric("Total Trips", f"{total_trips:,.0f}")
-    s4.metric(
-        "Boardings per Revenue Hour",
-        f"{overall_productivity:.2f}",
-    )
+    s4.metric("Cost per Passenger", f"${overall_cost_per_passenger:,.2f}")
 
     st.divider()
 
@@ -1773,33 +1795,112 @@ with tab1:
     )
 
     section_header(
-        "On-Time Performance",
-        "Early, On-Time, and Late percentages are displayed in the same stacked column for each route.",
+        "Passengers per Trip",
+        "Average passenger boardings generated by each scheduled trip.",
     )
 
-    performance_data = system_df[
-        ["routes", "avgearly", "avgontime", "avglate"]
+    passengers_per_trip_chart = (
+        alt.Chart(system_df)
+        .mark_bar(
+            color=TRIPS_ORANGE,
+            cornerRadiusTopLeft=4,
+            cornerRadiusTopRight=4,
+        )
+        .encode(
+            x=route_axis(),
+            y=alt.Y(
+                "passengerspertrip:Q",
+                title="Passengers per Trip",
+            ),
+            tooltip=[
+                alt.Tooltip("routes:N", title="Route"),
+                alt.Tooltip(
+                    "passengerspertrip:Q",
+                    title="Passengers per Trip",
+                    format=".1f",
+                ),
+                alt.Tooltip(
+                    "totalboarding:Q",
+                    title="Total Boardings",
+                    format=",.0f",
+                ),
+                alt.Tooltip(
+                    "totaltripcount:Q",
+                    title="Total Trips",
+                    format=",.0f",
+                ),
+            ],
+        )
+        .properties(
+            height=390,
+            title="Passengers per Trip by Route",
+        )
+    )
+
+    st.altair_chart(
+        format_chart(passengers_per_trip_chart),
+        use_container_width=True,
+    )
+
+    section_header(
+        "Arrival vs. Departure On-Time Performance",
+        "Each route has separate stacked columns for arrival-based and departure-based OTP.",
+    )
+
+    arrival_performance = system_df[
+        ["routes", "avgearlyarrival", "avgontimearrival", "avglatearrival"]
     ].melt(
         id_vars="routes",
         var_name="performance_type",
         value_name="percentage",
     )
-
-    performance_data["performance_type"] = (
-        performance_data["performance_type"].replace(
-            {
-                "avgearly": "Early",
-                "avgontime": "On-Time",
-                "avglate": "Late",
-            }
-        )
+    arrival_performance["perspective"] = "Arrival"
+    arrival_performance["performance_type"] = arrival_performance[
+        "performance_type"
+    ].replace(
+        {
+            "avgearlyarrival": "Early",
+            "avgontimearrival": "On-Time",
+            "avglatearrival": "Late",
+        }
     )
+
+    departure_performance = system_df[
+        ["routes", "avgearlydeparture", "avgontimedeparture", "avglatedeparture"]
+    ].melt(
+        id_vars="routes",
+        var_name="performance_type",
+        value_name="percentage",
+    )
+    departure_performance["perspective"] = "Departure"
+    departure_performance["performance_type"] = departure_performance[
+        "performance_type"
+    ].replace(
+        {
+            "avgearlydeparture": "Early",
+            "avgontimedeparture": "On-Time",
+            "avglatedeparture": "Late",
+        }
+    )
+
+    performance_data = pd.concat(
+        [arrival_performance, departure_performance],
+        ignore_index=True,
+    )
+    performance_data["performance_order"] = performance_data[
+        "performance_type"
+    ].map({"Early": 1, "On-Time": 2, "Late": 3})
 
     performance_chart = (
         alt.Chart(performance_data)
         .mark_bar(cornerRadiusTopLeft=3, cornerRadiusTopRight=3)
         .encode(
             x=route_axis(),
+            xOffset=alt.XOffset(
+                "perspective:N",
+                title="OTP Perspective",
+                sort=["Arrival", "Departure"],
+            ),
             y=alt.Y(
                 "percentage:Q",
                 title="Percentage",
@@ -1816,9 +1917,10 @@ with tab1:
                     range=[EARLY_GOLD, ON_TIME_GREEN, LATE_RED],
                 ),
             ),
-            order=alt.Order("performance_type:N", sort="descending"),
+            order=alt.Order("performance_order:Q"),
             tooltip=[
                 alt.Tooltip("routes:N", title="Route"),
+                alt.Tooltip("perspective:N", title="OTP Perspective"),
                 alt.Tooltip(
                     "performance_type:N",
                     title="Performance",
@@ -1832,7 +1934,7 @@ with tab1:
         )
         .properties(
             height=430,
-            title="Average Early, On-Time, and Late Performance by Route",
+            title="Arrival and Departure OTP by Route",
         )
     )
 
@@ -2194,6 +2296,186 @@ with tab1:
     )
 
     section_header(
+        "Cost per Passenger",
+        "Estimated route operating cost divided by passenger boardings, shown overall and by service day.",
+    )
+
+    cost_col1, cost_col2 = st.columns(2)
+
+    with cost_col1:
+        overall_cost_chart = (
+            alt.Chart(system_df)
+            .mark_bar(
+                color=REVENUE_HOURS_PURPLE,
+                cornerRadiusTopLeft=4,
+                cornerRadiusTopRight=4,
+            )
+            .encode(
+                x=route_axis(),
+                y=alt.Y(
+                    "costperpassenger:Q",
+                    title="Cost per Passenger ($)",
+                ),
+                tooltip=[
+                    alt.Tooltip("routes:N", title="Route"),
+                    alt.Tooltip(
+                        "costperpassenger:Q",
+                        title="Cost per Passenger",
+                        format="$.2f",
+                    ),
+                    alt.Tooltip(
+                        "ridershipperrevhour:Q",
+                        title="Ridership per Revenue Hour",
+                        format=".2f",
+                    ),
+                ],
+            )
+            .properties(height=390, title="Overall Cost per Passenger")
+        )
+        st.altair_chart(
+            format_chart(overall_cost_chart),
+            use_container_width=True,
+        )
+
+    cost_by_day = system_df[
+        [
+            "routes",
+            "costperpassengerweekday",
+            "costperpassengersaturday",
+            "costperpassengersunday",
+        ]
+    ].melt(
+        id_vars="routes",
+        var_name="service_day",
+        value_name="cost_per_passenger",
+    )
+    cost_by_day["service_day"] = cost_by_day["service_day"].replace(
+        {
+            "costperpassengerweekday": "Weekday",
+            "costperpassengersaturday": "Saturday",
+            "costperpassengersunday": "Sunday",
+        }
+    )
+    # Zero represents no service in the source table, not a zero-cost trip.
+    cost_by_day = cost_by_day[cost_by_day["cost_per_passenger"] > 0].copy()
+
+    with cost_col2:
+        service_day_cost_chart = (
+            alt.Chart(cost_by_day)
+            .mark_bar(cornerRadiusTopLeft=3, cornerRadiusTopRight=3)
+            .encode(
+                x=route_axis(),
+                xOffset=alt.XOffset(
+                    "service_day:N",
+                    sort=["Weekday", "Saturday", "Sunday"],
+                ),
+                y=alt.Y(
+                    "cost_per_passenger:Q",
+                    title="Cost per Passenger ($)",
+                ),
+                color=alt.Color(
+                    "service_day:N",
+                    title="Service Day",
+                    sort=["Weekday", "Saturday", "Sunday"],
+                    scale=alt.Scale(
+                        domain=["Weekday", "Saturday", "Sunday"],
+                        range=[WEEKDAY_BLUE, SATURDAY_GOLD, SUNDAY_GREEN],
+                    ),
+                ),
+                tooltip=[
+                    alt.Tooltip("routes:N", title="Route"),
+                    alt.Tooltip("service_day:N", title="Service Day"),
+                    alt.Tooltip(
+                        "cost_per_passenger:Q",
+                        title="Cost per Passenger",
+                        format="$.2f",
+                    ),
+                ],
+            )
+            .properties(height=390, title="Cost per Passenger by Service Day")
+        )
+        st.altair_chart(
+            format_chart(service_day_cost_chart),
+            use_container_width=True,
+        )
+
+    section_header(
+        "Cost and Productivity Relationship",
+        "Routes farther right carry more passengers per revenue hour; routes higher on the chart cost more per passenger.",
+    )
+
+    cost_productivity_data = system_df.dropna(
+        subset=["ridershipperrevhour", "costperpassenger"]
+    ).copy()
+
+    cost_productivity_points = (
+        alt.Chart(cost_productivity_data)
+        .mark_circle(size=150, opacity=0.85, stroke="white", strokeWidth=1)
+        .encode(
+            x=alt.X(
+                "ridershipperrevhour:Q",
+                title="Ridership per Revenue Hour",
+                scale=alt.Scale(zero=False),
+            ),
+            y=alt.Y(
+                "costperpassenger:Q",
+                title="Cost per Passenger ($)",
+                scale=alt.Scale(zero=False),
+            ),
+            color=alt.Color(
+                "passengerspertrip:Q",
+                title="Passengers per Trip",
+                scale=alt.Scale(range=[BFT_LIGHT_BLUE, BFT_NAVY]),
+            ),
+            tooltip=[
+                alt.Tooltip("routes:N", title="Route"),
+                alt.Tooltip(
+                    "ridershipperrevhour:Q",
+                    title="Ridership per Revenue Hour",
+                    format=".2f",
+                ),
+                alt.Tooltip(
+                    "costperpassenger:Q",
+                    title="Cost per Passenger",
+                    format="$.2f",
+                ),
+                alt.Tooltip(
+                    "passengerspertrip:Q",
+                    title="Passengers per Trip",
+                    format=".1f",
+                ),
+                alt.Tooltip(
+                    "totalboarding:Q",
+                    title="Total Boardings",
+                    format=",.0f",
+                ),
+            ],
+        )
+    )
+
+    cost_productivity_labels = (
+        alt.Chart(cost_productivity_data)
+        .mark_text(dx=9, dy=-7, fontSize=11, color=BFT_NAVY)
+        .encode(
+            x="ridershipperrevhour:Q",
+            y="costperpassenger:Q",
+            text="routes:N",
+        )
+    )
+
+    cost_productivity_chart = (
+        cost_productivity_points + cost_productivity_labels
+    ).properties(
+        height=500,
+        title="Cost per Passenger vs. Ridership per Revenue Hour",
+    )
+
+    st.altair_chart(
+        format_chart(cost_productivity_chart),
+        use_container_width=True,
+    )
+
+    section_header(
         "Complete Spring 2026 System Summary",
         "The table below contains every field from the system-summary CSV.",
     )
@@ -2209,14 +2491,18 @@ with tab1:
         "totalaveragedailysaturdayboarding": "Avg Daily Boardings – Saturday",
         "totalaveragedailysundayboarding": "Avg Daily Boardings – Sunday",
         "avgmedianload": "Avg Median Load",
-        "avgearly": "Avg Early (%)",
-        "avgontime": "Avg On-Time (%)",
-        "avglate": "Avg Late (%)",
+        "avgearlyarrival": "Avg Early Arrival (%)",
+        "avgontimearrival": "Avg On-Time Arrival (%)",
+        "avglatearrival": "Avg Late Arrival (%)",
+        "avgearlydeparture": "Avg Early Departure (%)",
+        "avgontimedeparture": "Avg On-Time Departure (%)",
+        "avglatedeparture": "Avg Late Departure (%)",
         "totalseasonalrevenuemiles": "Total Seasonal Revenue Miles",
         "averagedailyrevenuemilesweekday": "Avg Daily Revenue Miles – Weekday",
         "averagedailyrevenuemilessaturday": "Avg Daily Revenue Miles – Saturday",
         "averagedailyrevenuemilessunday": "Avg Daily Revenue Miles – Sunday",
         "totaltripcount": "Total Trip Count",
+        "passengerspertrip": "Passengers per Trip",
         "totalseasonalrevenuehours": "Total Seasonal Revenue Hours",
         "averagedailyrevenuehoursweekday": "Avg Daily Revenue Hours – Weekday",
         "averagedailyrevenuehourssaturday": "Avg Daily Revenue Hours – Saturday",
@@ -2225,6 +2511,10 @@ with tab1:
         "weekdayridershipperrevhour": "Weekday Ridership per Revenue Hour",
         "saturdayridershipperrevhour": "Saturday Ridership per Revenue Hour",
         "sundayridershipperrevhour": "Sunday Ridership per Revenue Hour",
+        "costperpassenger": "Cost per Passenger",
+        "costperpassengerweekday": "Cost per Passenger – Weekday",
+        "costperpassengersaturday": "Cost per Passenger – Saturday",
+        "costperpassengersunday": "Cost per Passenger – Sunday",
     }
 
     available_display_columns = {
@@ -2243,18 +2533,26 @@ with tab1:
         hide_index=True,
         column_config={
             "Route": st.column_config.TextColumn("Route", pinned=True),
-            "Avg Early (%)": st.column_config.NumberColumn(
-                "Avg Early (%)",
-                format="%.1f%%",
-            ),
-            "Avg On-Time (%)": st.column_config.NumberColumn(
-                "Avg On-Time (%)",
-                format="%.1f%%",
-            ),
-            "Avg Late (%)": st.column_config.NumberColumn(
-                "Avg Late (%)",
-                format="%.1f%%",
-            ),
+            **{
+                column: st.column_config.NumberColumn(column, format="%.1f%%")
+                for column in [
+                    "Avg Early Arrival (%)",
+                    "Avg On-Time Arrival (%)",
+                    "Avg Late Arrival (%)",
+                    "Avg Early Departure (%)",
+                    "Avg On-Time Departure (%)",
+                    "Avg Late Departure (%)",
+                ]
+            },
+            **{
+                column: st.column_config.NumberColumn(column, format="$%.2f")
+                for column in [
+                    "Cost per Passenger",
+                    "Cost per Passenger – Weekday",
+                    "Cost per Passenger – Saturday",
+                    "Cost per Passenger – Sunday",
+                ]
+            },
         },
     )
 
