@@ -42,36 +42,6 @@ TEXT_GRAY = "#6B7280"
 GRID_COLOR = "#E5E7EB"
 CARD_BORDER = "#E2E8F0"
 
-# Route service classifications used to organize the efficiency matrix.
-ROUTE_CATEGORY_ORDER = [
-    "METRO",
-    "METRO/EXPRESS",
-    "LOCAL",
-    "CITY CONNECTOR",
-]
-
-ROUTES_BY_CATEGORY = {
-    "METRO": ["3", "1"],
-    "METRO/EXPRESS": ["27X", "240X", "2X"],
-    "LOCAL": [
-        "10", "20", "25", "26", "40", "41", "42", "47",
-        "48", "50", "64", "65", "66", "67", "68",
-    ],
-    "CITY CONNECTOR": ["123", "170", "225"],
-}
-
-ROUTE_CATEGORY_MAP = {
-    route: category
-    for category, routes in ROUTES_BY_CATEGORY.items()
-    for route in routes
-}
-
-EFFICIENCY_MATRIX_ROUTE_ORDER = [
-    route
-    for category in ROUTE_CATEGORY_ORDER
-    for route in ROUTES_BY_CATEGORY[category]
-]
-
 
 # ==================================================
 # 3. PAGE STYLING
@@ -2431,7 +2401,7 @@ with tab1:
 
     section_header(
         "Route Efficiency Matrix",
-        "Routes are grouped by service category. Color intensity is scaled independently within each performance column, and cell labels show actual values.",
+        "Routes run horizontally across the matrix. Color intensity is scaled independently within each performance row, and cell labels show actual values.",
     )
 
     cost_productivity_heatmap = system_df[
@@ -2456,12 +2426,6 @@ with tab1:
             "passengerspertrip": "Passengers per Trip",
         }
     )
-    cost_productivity_heatmap["route_category"] = (
-        cost_productivity_heatmap["routes"]
-        .map(ROUTE_CATEGORY_MAP)
-        .fillna("OTHER")
-    )
-
     # Normalize each metric separately because cost, hourly productivity,
     # and passengers per trip use different units and ranges.
     def normalize_heatmap_column(series):
@@ -2493,6 +2457,18 @@ with tab1:
 
     heatmap_base = alt.Chart(cost_productivity_heatmap).encode(
         x=alt.X(
+            "routes:N",
+            title="Route",
+            sort=route_sort_order,
+            axis=alt.Axis(
+                orient="top",
+                labelAngle=-45,
+                labelFontSize=12,
+                labelPadding=8,
+                labelOverlap=False,
+            ),
+        ),
+        y=alt.Y(
             "metric:N",
             title=None,
             sort=[
@@ -2501,21 +2477,13 @@ with tab1:
                 "Passengers per Trip",
             ],
             axis=alt.Axis(
-                orient="top",
-                labelAngle=0,
-                labelFontSize=13,
                 labelPadding=10,
+                labelLimit=190,
+                labelFontSize=12,
             ),
-        ),
-        y=alt.Y(
-            "routes:N",
-            title="Route",
-            sort=EFFICIENCY_MATRIX_ROUTE_ORDER,
-            axis=alt.Axis(labelPadding=8),
         ),
         tooltip=[
             alt.Tooltip("routes:N", title="Route"),
-            alt.Tooltip("route_category:N", title="Service Category"),
             alt.Tooltip("metric:N", title="Measure"),
             alt.Tooltip("display_value:N", title="Value"),
         ],
@@ -2528,7 +2496,7 @@ with tab1:
     ).encode(
         color=alt.Color(
             "relative_value:Q",
-            title="Relative Value Within Column",
+            title="Relative Value Within Row",
             scale=alt.Scale(
                 domain=[0, 0.5, 1],
                 range=["#FFF5F0", "#FC9272", "#CB181D"],
@@ -2549,31 +2517,10 @@ with tab1:
         ),
     )
 
-    heatmap_layer = (
+    cost_productivity_chart = (
         heatmap_cells + heatmap_labels
     ).properties(
-        height=alt.Step(29),
-        width=alt.Step(210),
-    )
-
-    cost_productivity_chart = heatmap_layer.facet(
-        row=alt.Row(
-            "route_category:N",
-            title=None,
-            sort=ROUTE_CATEGORY_ORDER,
-            header=alt.Header(
-                labelAngle=0,
-                labelAlign="left",
-                labelAnchor="start",
-                labelColor=BFT_NAVY,
-                labelFontSize=14,
-                labelFontWeight=600,
-                labelPadding=8,
-            ),
-        )
-    ).resolve_scale(
-        y="independent",
-    ).properties(
+        height=190,
         title=(
             "Route Efficiency Matrix: Cost, Hourly Productivity, "
             "and Passengers per Trip"
