@@ -1,3 +1,4 @@
+import html
 import os
 import re
 from pathlib import Path
@@ -2404,132 +2405,175 @@ with tab1:
         "Routes run horizontally across the matrix. Color intensity is scaled independently within each performance row, and cell labels show actual values.",
     )
 
-    cost_productivity_heatmap = system_df[
-        [
-            "routes",
-            "costperpassenger",
-            "ridershipperrevhour",
-            "passengerspertrip",
+    efficiency_matrix = (
+        system_df.set_index("routes")[
+            [
+                "costperpassenger",
+                "ridershipperrevhour",
+                "passengerspertrip",
+            ]
         ]
-    ].melt(
-        id_vars="routes",
-        var_name="metric",
-        value_name="value",
-    ).dropna(subset=["value"])
-
-    cost_productivity_heatmap["metric"] = cost_productivity_heatmap[
-        "metric"
-    ].replace(
-        {
-            "costperpassenger": "Cost per Passenger",
-            "ridershipperrevhour": "Ridership per Revenue Hour",
-            "passengerspertrip": "Passengers per Trip",
-        }
-    )
-    # Normalize each metric separately because cost, hourly productivity,
-    # and passengers per trip use different units and ranges.
-    def normalize_heatmap_column(series):
-        minimum = series.min()
-        maximum = series.max()
-        if pd.isna(minimum) or pd.isna(maximum) or maximum == minimum:
-            return pd.Series(0.5, index=series.index)
-        return (series - minimum) / (maximum - minimum)
-
-    cost_productivity_heatmap["relative_value"] = (
-        cost_productivity_heatmap.groupby("metric")["value"]
-        .transform(normalize_heatmap_column)
-    )
-
-    cost_productivity_heatmap["display_value"] = (
-        cost_productivity_heatmap.apply(
-            lambda row: (
-                f"${row['value']:,.2f}"
-                if row["metric"] == "Cost per Passenger"
-                else (
-                    f"{row['value']:,.1f}"
-                    if row["metric"] == "Passengers per Trip"
-                    else f"{row['value']:,.2f}"
-                )
-            ),
-            axis=1,
+        .T
+        .rename(
+            index={
+                "costperpassenger": "Cost per Passenger ($)",
+                "ridershipperrevhour": "Ridership per Revenue Hour",
+                "passengerspertrip": "Passengers per Trip",
+            }
         )
+        .reindex(columns=route_sort_order)
     )
 
-    heatmap_base = alt.Chart(cost_productivity_heatmap).encode(
-        x=alt.X(
-            "routes:N",
-            title="Route",
-            sort=route_sort_order,
-            axis=alt.Axis(
-                orient="top",
-                labelAngle=-45,
-                labelFontSize=12,
-                labelPadding=8,
-                labelOverlap=False,
-            ),
-        ),
-        y=alt.Y(
-            "metric:N",
-            title=None,
-            sort=[
-                "Cost per Passenger",
-                "Ridership per Revenue Hour",
-                "Passengers per Trip",
-            ],
-            axis=alt.Axis(
-                labelPadding=10,
-                labelLimit=190,
-                labelFontSize=12,
-            ),
-        ),
-        tooltip=[
-            alt.Tooltip("routes:N", title="Route"),
-            alt.Tooltip("metric:N", title="Measure"),
-            alt.Tooltip("display_value:N", title="Value"),
-        ],
+    def efficiency_heatmap_styles(row):
+        """Apply a separate light-to-dark red scale within each matrix row."""
+        numeric_row = pd.to_numeric(row, errors="coerce")
+        valid_values = numeric_row.dropna()
+
+        if valid_values.empty:
+            return ["" for _ in row]
+
+        minimum = valid_values.min()
+        maximum = valid_values.max()
+        color_start = (255, 245, 240)
+        color_end = (203, 24, 29)
+        styles = []
+
+        for value in numeric_row:
+            if pd.isna(value):
+                styles.append("background-color: transparent;")
+                continue
+
+            relative_value = (
+                0.5
+                if maximum == minimum
+                else (value - minimum) / (maximum - minimum)
+            )
+
+            red = round(
+                color_start[0]
+                + relative_value * (color_end[0] - color_start[0])
+            )
+            green = round(
+                color_start[1]
+                + relative_value * (color_end[1] - color_start[1])
+            )
+            blue = round(
+                color_start[2]
+                + relative_value * (color_end[2] - color_start[2])
+            )
+            text_color = "white" if relative_value >= 0.62 else BFT_NAVY
+
+            styles.append(
+                f"background-color: rgb({red}, {green}, {blue}); "
+                f"color: {text_color}; font-weight: 600; "
+                "text-align: center; border: 1px solid white;"
+            )
+
+        return styles
+
+    st.caption(
+        "Darker cells indicate higher values within that row. "
+        "Each row is scaled independently because the measures use different units."
     )
 
-    heatmap_cells = heatmap_base.mark_rect(
-        stroke="white",
-        strokeWidth=1.5,
-        cornerRadius=2,
-    ).encode(
-        color=alt.Color(
-            "relative_value:Q",
-            title="Relative Value Within Row",
-            scale=alt.Scale(
-                domain=[0, 0.5, 1],
-                range=["#FFF5F0", "#FC9272", "#CB181D"],
-            ),
-            legend=alt.Legend(format=".0%"),
+    matrix_header_cells = "".join(
+        f"<th>{html.escape(str(route))}</th>"
+        for route in efficiency_matrix.columns
+    )
+    matrix_rows = []
+
+    for metric_name, metric_row in efficiency_matrix.iterrows():
+        row_styles = efficiency_heatmap_styles(metric_row)
+        value_cells = []
+
+        for value, cell_style in zip(metric_row, row_styles):
+            if pd.isna(value):
+                display_value = ""
+            elif metric_name == "Cost per Passenger ($)":
+                display_value = f"${value:,.2f}"
+            elif metric_name == "Passengers per Trip":
+                display_value = f"{value:,.1f}"
+            else:
+                display_value = f"{value:,.2f}"
+
+            value_cells.append(
+                f'<td style="{cell_style}">{display_value}</td>'
+            )
+
+        matrix_rows.append(
+            "<tr>"
+            f'<th class="metric-label">{html.escape(metric_name)}</th>'
+            + "".join(value_cells)
+            + "</tr>"
         )
-    )
 
-    heatmap_labels = heatmap_base.mark_text(
-        fontSize=12,
-        fontWeight=600,
-    ).encode(
-        text=alt.Text("display_value:N"),
-        color=alt.condition(
-            "datum.relative_value >= 0.58",
-            alt.value("white"),
-            alt.value(BFT_NAVY),
-        ),
-    )
+    efficiency_matrix_html = f"""
+    <style>
+    .efficiency-matrix-wrapper {{
+        width: 100%;
+        overflow-x: auto;
+        margin-top: 8px;
+        margin-bottom: 18px;
+    }}
+    .efficiency-matrix-table {{
+        border-collapse: separate;
+        border-spacing: 2px;
+        min-width: 1500px;
+        width: 100%;
+        font-variant-numeric: tabular-nums;
+    }}
+    .efficiency-matrix-table th,
+    .efficiency-matrix-table td {{
+        min-width: 58px;
+        height: 42px;
+        padding: 7px 8px;
+        text-align: center;
+        white-space: nowrap;
+        border-radius: 2px;
+    }}
+    .efficiency-matrix-table thead th {{
+        color: {BFT_NAVY};
+        background-color: #F8FAFC;
+        border: 1px solid {CARD_BORDER};
+        font-weight: 700;
+    }}
+    .efficiency-matrix-table .metric-label {{
+        position: sticky;
+        left: 0;
+        z-index: 2;
+        min-width: 195px;
+        text-align: left;
+        color: {BFT_NAVY};
+        background-color: white;
+        border: 1px solid {CARD_BORDER};
+        font-weight: 700;
+    }}
+    .efficiency-matrix-table .corner-cell {{
+        position: sticky;
+        left: 0;
+        z-index: 3;
+        min-width: 195px;
+        text-align: left;
+    }}
+    </style>
+    <div class="efficiency-matrix-wrapper">
+        <table class="efficiency-matrix-table">
+            <thead>
+                <tr>
+                    <th class="corner-cell">Performance Measure / Route</th>
+                    {matrix_header_cells}
+                </tr>
+            </thead>
+            <tbody>
+                {''.join(matrix_rows)}
+            </tbody>
+        </table>
+    </div>
+    """
 
-    cost_productivity_chart = (
-        heatmap_cells + heatmap_labels
-    ).properties(
-        height=190,
-        title=(
-            "Route Efficiency Matrix: Cost, Hourly Productivity, "
-            "and Passengers per Trip"
-        ),
-    )
-
-    st.altair_chart(
-        format_chart(cost_productivity_chart),
-        use_container_width=True,
+    st.markdown(
+        efficiency_matrix_html,
+        unsafe_allow_html=True,
     )
 
     section_header(
