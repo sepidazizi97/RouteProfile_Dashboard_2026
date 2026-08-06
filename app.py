@@ -42,6 +42,36 @@ TEXT_GRAY = "#6B7280"
 GRID_COLOR = "#E5E7EB"
 CARD_BORDER = "#E2E8F0"
 
+# Route service classifications used to organize the efficiency matrix.
+ROUTE_CATEGORY_ORDER = [
+    "METRO",
+    "METRO/EXPRESS",
+    "LOCAL",
+    "CITY CONNECTOR",
+]
+
+ROUTES_BY_CATEGORY = {
+    "METRO": ["3", "1"],
+    "METRO/EXPRESS": ["27X", "240X", "2X"],
+    "LOCAL": [
+        "10", "20", "25", "26", "40", "41", "42", "47",
+        "48", "50", "64", "65", "66", "67", "68",
+    ],
+    "CITY CONNECTOR": ["123", "170", "225"],
+}
+
+ROUTE_CATEGORY_MAP = {
+    route: category
+    for category, routes in ROUTES_BY_CATEGORY.items()
+    for route in routes
+}
+
+EFFICIENCY_MATRIX_ROUTE_ORDER = [
+    route
+    for category in ROUTE_CATEGORY_ORDER
+    for route in ROUTES_BY_CATEGORY[category]
+]
+
 
 # ==================================================
 # 3. PAGE STYLING
@@ -2400,12 +2430,17 @@ with tab1:
         )
 
     section_header(
-        "Cost and Productivity Heat Map",
-        "Color intensity is scaled independently within each column. Cell labels show the actual route values.",
+        "Route Efficiency Matrix",
+        "Routes are grouped by service category. Color intensity is scaled independently within each performance column, and cell labels show actual values.",
     )
 
     cost_productivity_heatmap = system_df[
-        ["routes", "costperpassenger", "ridershipperrevhour"]
+        [
+            "routes",
+            "costperpassenger",
+            "ridershipperrevhour",
+            "passengerspertrip",
+        ]
     ].melt(
         id_vars="routes",
         var_name="metric",
@@ -2418,11 +2453,17 @@ with tab1:
         {
             "costperpassenger": "Cost per Passenger",
             "ridershipperrevhour": "Ridership per Revenue Hour",
+            "passengerspertrip": "Passengers per Trip",
         }
     )
+    cost_productivity_heatmap["route_category"] = (
+        cost_productivity_heatmap["routes"]
+        .map(ROUTE_CATEGORY_MAP)
+        .fillna("OTHER")
+    )
 
-    # Normalize each metric separately because dollars per passenger and
-    # passengers per revenue hour use different units and ranges.
+    # Normalize each metric separately because cost, hourly productivity,
+    # and passengers per trip use different units and ranges.
     def normalize_heatmap_column(series):
         minimum = series.min()
         maximum = series.max()
@@ -2440,7 +2481,11 @@ with tab1:
             lambda row: (
                 f"${row['value']:,.2f}"
                 if row["metric"] == "Cost per Passenger"
-                else f"{row['value']:,.2f}"
+                else (
+                    f"{row['value']:,.1f}"
+                    if row["metric"] == "Passengers per Trip"
+                    else f"{row['value']:,.2f}"
+                )
             ),
             axis=1,
         )
@@ -2450,7 +2495,11 @@ with tab1:
         x=alt.X(
             "metric:N",
             title=None,
-            sort=["Cost per Passenger", "Ridership per Revenue Hour"],
+            sort=[
+                "Cost per Passenger",
+                "Ridership per Revenue Hour",
+                "Passengers per Trip",
+            ],
             axis=alt.Axis(
                 orient="top",
                 labelAngle=0,
@@ -2461,11 +2510,12 @@ with tab1:
         y=alt.Y(
             "routes:N",
             title="Route",
-            sort=route_sort_order,
+            sort=EFFICIENCY_MATRIX_ROUTE_ORDER,
             axis=alt.Axis(labelPadding=8),
         ),
         tooltip=[
             alt.Tooltip("routes:N", title="Route"),
+            alt.Tooltip("route_category:N", title="Service Category"),
             alt.Tooltip("metric:N", title="Measure"),
             alt.Tooltip("display_value:N", title="Value"),
         ],
@@ -2499,11 +2549,35 @@ with tab1:
         ),
     )
 
-    cost_productivity_chart = (
+    heatmap_layer = (
         heatmap_cells + heatmap_labels
     ).properties(
-        height=max(500, len(route_sort_order) * 29),
-        title="Cost per Passenger and Ridership per Revenue Hour by Route",
+        height=alt.Step(29),
+        width=alt.Step(210),
+    )
+
+    cost_productivity_chart = heatmap_layer.facet(
+        row=alt.Row(
+            "route_category:N",
+            title=None,
+            sort=ROUTE_CATEGORY_ORDER,
+            header=alt.Header(
+                labelAngle=0,
+                labelAlign="left",
+                labelAnchor="start",
+                labelColor=BFT_NAVY,
+                labelFontSize=14,
+                labelFontWeight=600,
+                labelPadding=8,
+            ),
+        )
+    ).resolve_scale(
+        y="independent",
+    ).properties(
+        title=(
+            "Route Efficiency Matrix: Cost, Hourly Productivity, "
+            "and Passengers per Trip"
+        ),
     )
 
     st.altair_chart(
