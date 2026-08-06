@@ -28,8 +28,11 @@ BFT_LIGHT_BLUE = "#60A5FA"
 BFT_GOLD = "#E3A008"
 
 ON_TIME_GREEN = "#2E8B57"
-EARLY_GOLD = "#F6C85F"
-LATE_RED = "#D64545"
+
+# OTP chart theme: red = Early, bright green = On-Time, blue = Late.
+OTP_EARLY_RED = "#FF3B30"
+OTP_ON_TIME_GREEN = "#7ED321"
+OTP_LATE_BLUE = "#4C63F2"
 
 WEEKDAY_BLUE = "#2563EB"
 SATURDAY_GOLD = "#E3A008"
@@ -520,9 +523,9 @@ DIRECTION_COLORS = {
 }
 
 OTP_COLORS = {
-    "On-Time": "#2E86AB",
-    "Early": "#F6C85F",
-    "Late": "#D1495B",
+    "On-Time": OTP_ON_TIME_GREEN,
+    "Early": OTP_EARLY_RED,
+    "Late": OTP_LATE_BLUE,
 }
 
 SERVICE_DAY_ORDER = ["Weekday", "Saturday", "Sunday"]
@@ -1915,7 +1918,7 @@ with tab1:
                 sort=["Early", "On-Time", "Late"],
                 scale=alt.Scale(
                     domain=["Early", "On-Time", "Late"],
-                    range=[EARLY_GOLD, ON_TIME_GREEN, LATE_RED],
+                    range=[OTP_EARLY_RED, OTP_ON_TIME_GREEN, OTP_LATE_BLUE],
                 ),
             ),
             order=alt.Order("performance_order:Q"),
