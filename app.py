@@ -143,7 +143,9 @@ TREND_FILE_CANDIDATES = [
 ]
 
 ROUTE_PROFILE_FILE_CANDIDATES = [
+    APP_FOLDER / "data" / "Route Profile(2).xlsx",
     APP_FOLDER / "data" / "Route Profile.xlsx",
+    APP_FOLDER / "Route Profile(2).xlsx",
     APP_FOLDER / "Route Profile.xlsx",
 ]
 
@@ -711,9 +713,9 @@ def load_paired_route_profiles(
     """
     Read every route sheet from Route Profile.xlsx.
 
-    Only columns A:P are read. This is intentional because each sheet uses:
-      A:H = Trip 1 information
-      I:P = Trip 2 information
+    Columns A:V contain the updated paired structure:
+      A:K = Trip 1 information
+      L:V = Trip 2 information
 
     Each spreadsheet row is already a matched trip pair. Blank cells are kept
     as an unmatched side of that pair rather than being dropped or re-paired.
@@ -727,24 +729,30 @@ def load_paired_route_profiles(
         "trip1",
         "average_daily_boardings1",
         "median_passenger_load1",
-        "early1",
-        "on_time1",
-        "late1",
+        "early_arrival1",
+        "on_time_arrival1",
+        "late_arrival1",
+        "early_departure1",
+        "on_time_departure1",
+        "late_departure1",
         "total_fare_counts1",
         "day2",
         "trip2",
         "average_daily_boardings2",
         "median_passenger_load2",
-        "early2",
-        "on_time2",
-        "late2",
+        "early_arrival2",
+        "on_time_arrival2",
+        "late_arrival2",
+        "early_departure2",
+        "on_time_departure2",
+        "late_departure2",
         "total_fare_counts2",
     ]
 
     for sheet_name in workbook.sheet_names:
         route_name = normalize_route_name(sheet_name)
 
-        # Read the worksheet first without forcing A:P. This prevents pandas
+        # Read the worksheet first without forcing A:V. This prevents pandas
         # from crashing when an older or single-direction sheet has fewer than
         # 16 physically populated columns.
         sheet_df = pd.read_excel(
@@ -756,10 +764,10 @@ def load_paired_route_profiles(
         if sheet_df.empty or sheet_df.shape[1] < 2:
             continue
 
-        # Keep the paired A:P structure. Missing columns are padded with blanks
+        # Keep the paired A:V structure. Missing columns are padded with blanks
         # so a one-sided route remains usable rather than being discarded.
-        sheet_df = sheet_df.iloc[:, :16].copy()
-        while sheet_df.shape[1] < 16:
+        sheet_df = sheet_df.iloc[:, :22].copy()
+        while sheet_df.shape[1] < 22:
             sheet_df[f"__blank_{sheet_df.shape[1] + 1}"] = pd.NA
 
         sheet_df.columns = expected_columns
@@ -785,41 +793,48 @@ def load_paired_route_profiles(
             numeric_fields = [
                 f"average_daily_boardings{side}",
                 f"median_passenger_load{side}",
-                f"early{side}",
-                f"on_time{side}",
-                f"late{side}",
+                f"early_arrival{side}",
+                f"on_time_arrival{side}",
+                f"late_arrival{side}",
+                f"early_departure{side}",
+                f"on_time_departure{side}",
+                f"late_departure{side}",
                 f"total_fare_counts{side}",
             ]
 
             for field in numeric_fields:
                 sheet_df[field] = safe_numeric(sheet_df[field])
 
-            otp_fields = [
-                f"early{side}",
-                f"on_time{side}",
-                f"late{side}",
-            ]
+            # Standardize Arrival and Departure OTP independently.
+            for perspective in ("arrival", "departure"):
+                otp_fields = [
+                    f"early_{perspective}{side}",
+                    f"on_time_{perspective}{side}",
+                    f"late_{perspective}{side}",
+                ]
 
-            row_max = sheet_df[otp_fields].max(axis=1, skipna=True)
-            decimal_rows = row_max.notna() & (row_max <= 1.5)
-            sheet_df.loc[decimal_rows, otp_fields] = (
-                sheet_df.loc[decimal_rows, otp_fields] * 100
-            )
+                row_max = sheet_df[otp_fields].max(axis=1, skipna=True)
+                decimal_rows = row_max.notna() & (row_max <= 1.5)
+                sheet_df.loc[decimal_rows, otp_fields] = (
+                    sheet_df.loc[decimal_rows, otp_fields] * 100
+                )
 
-            missing_on_time = (
-                sheet_df[f"on_time{side}"].isna()
-                & sheet_df[f"early{side}"].notna()
-                & sheet_df[f"late{side}"].notna()
-            )
+                on_time_field = f"on_time_{perspective}{side}"
+                early_field = f"early_{perspective}{side}"
+                late_field = f"late_{perspective}{side}"
+                missing_on_time = (
+                    sheet_df[on_time_field].isna()
+                    & sheet_df[early_field].notna()
+                    & sheet_df[late_field].notna()
+                )
+                sheet_df.loc[missing_on_time, on_time_field] = (
+                    100
+                    - sheet_df.loc[missing_on_time, early_field]
+                    - sheet_df.loc[missing_on_time, late_field]
+                )
 
-            sheet_df.loc[missing_on_time, f"on_time{side}"] = (
-                100
-                - sheet_df.loc[missing_on_time, f"early{side}"]
-                - sheet_df.loc[missing_on_time, f"late{side}"]
-            )
-
-            for field in otp_fields:
-                sheet_df[field] = sheet_df[field].clip(0, 100)
+                for field in otp_fields:
+                    sheet_df[field] = sheet_df[field].clip(0, 100)
 
             sheet_df[f"trip_{side}_start_time"] = extract_trip_time(
                 sheet_df[f"trip{side}"]
@@ -875,9 +890,12 @@ def load_paired_route_profiles(
                 f"direction{side}",
                 f"average_daily_boardings{side}",
                 f"median_passenger_load{side}",
-                f"early{side}",
-                f"on_time{side}",
-                f"late{side}",
+                f"early_arrival{side}",
+                f"on_time_arrival{side}",
+                f"late_arrival{side}",
+                f"early_departure{side}",
+                f"on_time_departure{side}",
+                f"late_departure{side}",
                 f"total_fare_counts{side}",
             ]
         ].copy()
@@ -896,9 +914,12 @@ def load_paired_route_profiles(
             "direction",
             "average_daily_boardings",
             "median_passenger_load",
-            "percent_early",
-            "percent_on_time",
-            "percent_late",
+            "percent_early_arrival",
+            "percent_on_time_arrival",
+            "percent_late_arrival",
+            "percent_early_departure",
+            "percent_on_time_departure",
+            "percent_late_departure",
             "total_fare_counts",
         ]
 
@@ -1062,9 +1083,16 @@ def actual_time_bar_chart(data, value_column, y_title, tooltip_title, aggregatio
     return chart_style(chart)
 
 
-def otp_chart(data):
+def otp_chart(data, perspective="arrival"):
     if data.empty:
         return None
+
+    if perspective not in {"arrival", "departure"}:
+        raise ValueError("perspective must be 'arrival' or 'departure'")
+
+    early_column = f"percent_early_{perspective}"
+    on_time_column = f"percent_on_time_{perspective}"
+    late_column = f"percent_late_{perspective}"
 
     trip_order = (
         data[["trip_start_time", "trip_minutes"]]
@@ -1080,9 +1108,9 @@ def otp_chart(data):
             dropna=False,
         )
         .agg(
-            percent_on_time=("percent_on_time", "mean"),
-            percent_early=("percent_early", "mean"),
-            percent_late=("percent_late", "mean"),
+            percent_on_time=(on_time_column, "mean"),
+            percent_early=(early_column, "mean"),
+            percent_late=(late_column, "mean"),
         )
     )
 
@@ -1165,17 +1193,29 @@ def create_route_profile(route_pairs, route_trips, route_name):
     total_average_daily_boardings = route_trips["average_daily_boardings"].sum()
     total_fare_counts = route_trips["total_fare_counts"].sum()
     average_load = route_trips["median_passenger_load"].mean()
-    average_early = route_trips["percent_early"].mean()
-    average_otp = route_trips["percent_on_time"].mean()
-    average_late = route_trips["percent_late"].mean()
+    arrival_early = route_trips["percent_early_arrival"].mean()
+    arrival_otp = route_trips["percent_on_time_arrival"].mean()
+    arrival_late = route_trips["percent_late_arrival"].mean()
+    departure_early = route_trips["percent_early_departure"].mean()
+    departure_otp = route_trips["percent_on_time_departure"].mean()
+    departure_late = route_trips["percent_late_departure"].mean()
 
-    m1, m2, m3, m4, m5, m6 = st.columns(6)
+    m1, m2, m3 = st.columns(3)
     m1.metric("Total Avg. Daily Boardings", f"{total_average_daily_boardings:,.1f}")
     m2.metric("Total Fare Counts", f"{total_fare_counts:,.0f}")
     m3.metric("Avg. Median Load", f"{average_load:.1f}")
-    m4.metric("Avg. Early", f"{average_early:.1f}%")
-    m5.metric("Avg. On-Time", f"{average_otp:.1f}%")
-    m6.metric("Avg. Late", f"{average_late:.1f}%")
+
+    st.markdown("##### Arrival OTP")
+    a1, a2, a3 = st.columns(3)
+    a1.metric("Avg. Early Arrival", f"{arrival_early:.1f}%")
+    a2.metric("Avg. On-Time Arrival", f"{arrival_otp:.1f}%")
+    a3.metric("Avg. Late Arrival", f"{arrival_late:.1f}%")
+
+    st.markdown("##### Departure OTP")
+    d1, d2, d3 = st.columns(3)
+    d1.metric("Avg. Early Departure", f"{departure_early:.1f}%")
+    d2.metric("Avg. On-Time Departure", f"{departure_otp:.1f}%")
+    d3.metric("Avg. Late Departure", f"{departure_late:.1f}%")
 
     st.divider()
 
@@ -1293,20 +1333,48 @@ def create_route_profile(route_pairs, route_trips, route_name):
                     st.altair_chart(load_chart, use_container_width=True)
 
             # ------------------------------------------------
-            # ON-TIME PERFORMANCE
+            # ARRIVAL AND DEPARTURE ON-TIME PERFORMANCE
             # ------------------------------------------------
 
             st.markdown("#### On-Time Performance per Trip")
 
-            for direction in directions:
-                direction_df = day_trips[day_trips["direction"] == direction].copy()
-                st.markdown(f"##### Direction {direction}")
+            arrival_tab, departure_tab = st.tabs(
+                ["Arrival OTP", "Departure OTP"]
+            )
 
-                direction_otp = otp_chart(direction_df)
-                if direction_otp is None:
-                    st.warning(f"No OTP data were found for Direction {direction}.")
-                else:
-                    st.altair_chart(direction_otp, use_container_width=True)
+            with arrival_tab:
+                st.caption(
+                    "Arrival OTP compares actual arrival with scheduled arrival."
+                )
+                for direction in directions:
+                    direction_df = day_trips[
+                        day_trips["direction"] == direction
+                    ].copy()
+                    st.markdown(f"##### Direction {direction}")
+                    direction_otp = otp_chart(direction_df, "arrival")
+                    if direction_otp is None:
+                        st.warning(
+                            f"No arrival OTP data were found for Direction {direction}."
+                        )
+                    else:
+                        st.altair_chart(direction_otp, use_container_width=True)
+
+            with departure_tab:
+                st.caption(
+                    "Departure OTP compares actual departure with scheduled departure."
+                )
+                for direction in directions:
+                    direction_df = day_trips[
+                        day_trips["direction"] == direction
+                    ].copy()
+                    st.markdown(f"##### Direction {direction}")
+                    direction_otp = otp_chart(direction_df, "departure")
+                    if direction_otp is None:
+                        st.warning(
+                            f"No departure OTP data were found for Direction {direction}."
+                        )
+                    else:
+                        st.altair_chart(direction_otp, use_container_width=True)
 
             # ------------------------------------------------
             # PAIRED DETAIL TABLE
@@ -1322,17 +1390,23 @@ def create_route_profile(route_pairs, route_trips, route_name):
                     "direction1",
                     "average_daily_boardings1",
                     "median_passenger_load1",
-                    "early1",
-                    "on_time1",
-                    "late1",
+                    "early_arrival1",
+                    "on_time_arrival1",
+                    "late_arrival1",
+                    "early_departure1",
+                    "on_time_departure1",
+                    "late_departure1",
                     "total_fare_counts1",
                     "trip2",
                     "direction2",
                     "average_daily_boardings2",
                     "median_passenger_load2",
-                    "early2",
-                    "on_time2",
-                    "late2",
+                    "early_arrival2",
+                    "on_time_arrival2",
+                    "late_arrival2",
+                    "early_departure2",
+                    "on_time_departure2",
+                    "late_departure2",
                     "total_fare_counts2",
                 ]
 
@@ -1344,17 +1418,23 @@ def create_route_profile(route_pairs, route_trips, route_name):
                         "direction1": "Direction 1",
                         "average_daily_boardings1": "Average Daily Boardings 1",
                         "median_passenger_load1": "Median Passenger Load 1",
-                        "early1": "% Early 1",
-                        "on_time1": "% On-Time 1",
-                        "late1": "% Late 1",
+                        "early_arrival1": "% Early Arrival 1",
+                        "on_time_arrival1": "% On-Time Arrival 1",
+                        "late_arrival1": "% Late Arrival 1",
+                        "early_departure1": "% Early Departure 1",
+                        "on_time_departure1": "% On-Time Departure 1",
+                        "late_departure1": "% Late Departure 1",
                         "total_fare_counts1": "Total Fare Counts 1",
                         "trip2": "Trip 2",
                         "direction2": "Direction 2",
                         "average_daily_boardings2": "Average Daily Boardings 2",
                         "median_passenger_load2": "Median Passenger Load 2",
-                        "early2": "% Early 2",
-                        "on_time2": "% On-Time 2",
-                        "late2": "% Late 2",
+                        "early_arrival2": "% Early Arrival 2",
+                        "on_time_arrival2": "% On-Time Arrival 2",
+                        "late_arrival2": "% Late Arrival 2",
+                        "early_departure2": "% Early Departure 2",
+                        "on_time_departure2": "% On-Time Departure 2",
+                        "late_departure2": "% Late Departure 2",
                         "total_fare_counts2": "Total Fare Counts 2",
                     }
                 )
@@ -2426,4 +2506,3 @@ st.caption(
     "Data loaded from the deployed repository | "
     "Last deployed version"
 )
-
