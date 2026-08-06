@@ -2400,74 +2400,110 @@ with tab1:
         )
 
     section_header(
-        "Cost and Productivity Relationship",
-        "Routes farther right carry more passengers per revenue hour; routes higher on the chart cost more per passenger.",
+        "Cost and Productivity Heat Map",
+        "Color intensity is scaled independently within each column. Cell labels show the actual route values.",
     )
 
-    cost_productivity_data = system_df.dropna(
-        subset=["ridershipperrevhour", "costperpassenger"]
-    ).copy()
+    cost_productivity_heatmap = system_df[
+        ["routes", "costperpassenger", "ridershipperrevhour"]
+    ].melt(
+        id_vars="routes",
+        var_name="metric",
+        value_name="value",
+    ).dropna(subset=["value"])
 
-    cost_productivity_points = (
-        alt.Chart(cost_productivity_data)
-        .mark_circle(size=150, opacity=0.85, stroke="white", strokeWidth=1)
-        .encode(
-            x=alt.X(
-                "ridershipperrevhour:Q",
-                title="Ridership per Revenue Hour",
-                scale=alt.Scale(zero=False),
+    cost_productivity_heatmap["metric"] = cost_productivity_heatmap[
+        "metric"
+    ].replace(
+        {
+            "costperpassenger": "Cost per Passenger",
+            "ridershipperrevhour": "Ridership per Revenue Hour",
+        }
+    )
+
+    # Normalize each metric separately because dollars per passenger and
+    # passengers per revenue hour use different units and ranges.
+    def normalize_heatmap_column(series):
+        minimum = series.min()
+        maximum = series.max()
+        if pd.isna(minimum) or pd.isna(maximum) or maximum == minimum:
+            return pd.Series(0.5, index=series.index)
+        return (series - minimum) / (maximum - minimum)
+
+    cost_productivity_heatmap["relative_value"] = (
+        cost_productivity_heatmap.groupby("metric")["value"]
+        .transform(normalize_heatmap_column)
+    )
+
+    cost_productivity_heatmap["display_value"] = (
+        cost_productivity_heatmap.apply(
+            lambda row: (
+                f"${row['value']:,.2f}"
+                if row["metric"] == "Cost per Passenger"
+                else f"{row['value']:,.2f}"
             ),
-            y=alt.Y(
-                "costperpassenger:Q",
-                title="Cost per Passenger ($)",
-                scale=alt.Scale(zero=False),
-            ),
-            color=alt.Color(
-                "passengerspertrip:Q",
-                title="Passengers per Trip",
-                scale=alt.Scale(range=[BFT_LIGHT_BLUE, BFT_NAVY]),
-            ),
-            tooltip=[
-                alt.Tooltip("routes:N", title="Route"),
-                alt.Tooltip(
-                    "ridershipperrevhour:Q",
-                    title="Ridership per Revenue Hour",
-                    format=".2f",
-                ),
-                alt.Tooltip(
-                    "costperpassenger:Q",
-                    title="Cost per Passenger",
-                    format="$.2f",
-                ),
-                alt.Tooltip(
-                    "passengerspertrip:Q",
-                    title="Passengers per Trip",
-                    format=".1f",
-                ),
-                alt.Tooltip(
-                    "totalboarding:Q",
-                    title="Total Boardings",
-                    format=",.0f",
-                ),
-            ],
+            axis=1,
         )
     )
 
-    cost_productivity_labels = (
-        alt.Chart(cost_productivity_data)
-        .mark_text(dx=9, dy=-7, fontSize=11, color=BFT_NAVY)
-        .encode(
-            x="ridershipperrevhour:Q",
-            y="costperpassenger:Q",
-            text="routes:N",
+    heatmap_base = alt.Chart(cost_productivity_heatmap).encode(
+        x=alt.X(
+            "metric:N",
+            title=None,
+            sort=["Cost per Passenger", "Ridership per Revenue Hour"],
+            axis=alt.Axis(
+                orient="top",
+                labelAngle=0,
+                labelFontSize=13,
+                labelPadding=10,
+            ),
+        ),
+        y=alt.Y(
+            "routes:N",
+            title="Route",
+            sort=route_sort_order,
+            axis=alt.Axis(labelPadding=8),
+        ),
+        tooltip=[
+            alt.Tooltip("routes:N", title="Route"),
+            alt.Tooltip("metric:N", title="Measure"),
+            alt.Tooltip("display_value:N", title="Value"),
+        ],
+    )
+
+    heatmap_cells = heatmap_base.mark_rect(
+        stroke="white",
+        strokeWidth=1.5,
+        cornerRadius=2,
+    ).encode(
+        color=alt.Color(
+            "relative_value:Q",
+            title="Relative Value Within Column",
+            scale=alt.Scale(
+                domain=[0, 0.5, 1],
+                range=["#FFF5F0", "#FC9272", "#CB181D"],
+            ),
+            legend=alt.Legend(format=".0%"),
         )
+    )
+
+    heatmap_labels = heatmap_base.mark_text(
+        fontSize=12,
+        fontWeight=600,
+    ).encode(
+        text=alt.Text("display_value:N"),
+        color=alt.condition(
+            "datum.relative_value >= 0.58",
+            alt.value("white"),
+            alt.value(BFT_NAVY),
+        ),
     )
 
     cost_productivity_chart = (
-        cost_productivity_points + cost_productivity_labels
+        heatmap_cells + heatmap_labels
     ).properties(
-        height=500,
-        title="Cost per Passenger vs. Ridership per Revenue Hour",
+        height=max(500, len(route_sort_order) * 29),
+        title="Cost per Passenger and Ridership per Revenue Hour by Route",
     )
 
     st.altair_chart(
