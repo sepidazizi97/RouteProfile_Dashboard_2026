@@ -2,4 +2,4 @@ streamlit
 pandas
 altair
 openpyxl
-vl-convert-python>=1.6.0
+
